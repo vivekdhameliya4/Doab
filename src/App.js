@@ -1,17 +1,16 @@
-import { useState, useEffect, createContext, useContext, useMemo } from "react";
+import { useState, createContext, useContext, useMemo } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 // ── API endpoint — proxy server for production, direct for dev ────────────────
-// In the artifact → call Anthropic directly (proxy handles auth automatically)
-// On localhost → use local proxy server
-// On Vercel → use /api/claude serverless function
-const IS_ARTIFACT  = typeof window !== "undefined" && window.location.hostname.includes("claude.ai");
-const IS_LOCAL     = typeof window !== "undefined" && window.location.hostname === "localhost";
-const API_URL      = IS_ARTIFACT
-  ? "https://api.anthropic.com/v1/messages"
-  : IS_LOCAL
-    ? "http://localhost:3001/api/claude"
-    : "/api/claude";
+// Always use relative path — React proxy forwards to server.js (no CORS issues)
+const IS_ARTIFACT = typeof window !== "undefined" && window.location.hostname.includes("claude.ai");
+const API_URL = (() => {
+  if (typeof window === "undefined") return "/api/claude";
+  const h = window.location.hostname;
+  if (h === "localhost" || h === "127.0.0.1") return "http://localhost:3001/api/claude";
+  if (h.includes("claude.ai")) return "https://api.anthropic.com/v1/messages";
+  return "/api/claude"; // Vercel
+})();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SEED DATA
@@ -173,14 +172,15 @@ const WASTE_REASONS = ["Expired","Damaged","Over-prep","Dropped","Wrong order","
 const PO_STATUS_COLORS = { pending:{bg:"#fef3c7",text:"#92400e"}, ordered:{bg:"#dbeafe",text:"#1e40af"}, received:{bg:"#d1fae5",text:"#065f46"}, cancelled:{bg:"#fee2e2",text:"#991b1b"} };
 
 // ── Inline hooks (artifact-compatible — uses local state + seed data) ──────────
+// ── Local-state hooks (used when Supabase not configured) ──────────────────
 function makeHook(seedData) {
   return function useTable() {
-    const [data, setData] = useState(seedData || []);
+    const [data, setData] = useState(seedData ? [...seedData] : []);
     const create = (item) => { const n={...item,id:Date.now()}; setData(d=>[...d,n]); return n; };
-    const update = (id, item) => { setData(d=>d.map(x=>x.id===id?{...x,...item}:x)); };
+    const update = (id, item) => { setData(d=>d.map(x=>x.id===id?{...x,...item}:x)); return item; };
     const remove = (id)       => { setData(d=>d.filter(x=>x.id!==id)); };
-    const save   = (item)     => { if(item.id){update(item.id,item);}else{create(item);} };
-    return { data, loading:false, error:null, create, update, remove, save, reload:()=>{} };
+    const save   = (item)     => { if(item.id){return update(item.id,item);}else{return create(item);} };
+    return { data, loading:false, error:null, create, update, remove, save };
   };
 }
 const useVendors   = makeHook(SEED_VENDORS);
@@ -194,7 +194,7 @@ const useWaste     = makeHook(SEED_WASTE);
 const useCash      = makeHook(SEED_CASH_SESSIONS);
 const useShifts    = makeHook(SEED_SHIFTS);
 const useSchedules = () => {
-  const [data,setData] = useState(SEED_SCHEDULES);
+  const [data,setData] = useState([...SEED_SCHEDULES]);
   const upsert = s => setData(d=>d.find(x=>x.staffId===s.staffId)?d.map(x=>x.staffId===s.staffId?{...x,...s}:x):[...d,s]);
   return { data, loading:false, error:null, upsert };
 };
@@ -205,8 +205,8 @@ const LoadingScreen = () => (
   </div>
 );
 const DbError = ({message}) => (
-  <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"14px 18px",marginBottom:20}}>
-    <div style={{color:"#dc2626",fontWeight:700}}>Error: {message}</div>
+  <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"14px 18px",marginBottom:20,display:"flex",gap:10}}>
+    <span>⚠️</span><div style={{color:"#9ca3af",fontSize:12}}>Running with local data. {message}</div>
   </div>
 );
 
@@ -266,9 +266,9 @@ const Sel = ({ label, value, onChange, options, style:sx }) => (
   </div>
 );
 const Modal = ({ title, onClose, children, wide }) => (
-  <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1000}}
+  <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"16px"}}
     onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-    <div className="modal-inner" style={{background:"#ffffff",border:"1px solid #e5e9f0",borderRadius:"18px 18px 0 0",boxShadow:"0 -8px 40px rgba(15,23,42,0.15)",width:"100%",maxWidth:wide?700:460,maxHeight:"92vh",overflowY:"auto"}}>
+    <div style={{background:"#ffffff",border:"1px solid #e5e9f0",borderRadius:18,boxShadow:"0 20px 60px rgba(15,23,42,0.2)",width:"100%",maxWidth:wide?700:460,maxHeight:"90vh",overflowY:"auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 22px 0"}}>
         <div style={{color:"#111827",fontSize:16,fontWeight:800}}>{title}</div>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#9ca3af",fontSize:20,cursor:"pointer",lineHeight:1,padding:4}}>✕</button>
@@ -463,8 +463,8 @@ function InventoryPage() {
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search products…" style={{...S.input,flex:1,minWidth:180}}/>
         {cats.map(c=><FBtn key={c} active={catFilter===c} onClick={()=>setCatFilter(c)}>{c}</FBtn>)}
       </div>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Product","Category","Price","Cost","Stock","Min","Status",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map((p,i)=>(
@@ -614,8 +614,8 @@ function CustomersPage() {
         <StatCard icon="💰" label="Total Customer Revenue" value={`$${customers.reduce((s,c)=>s+c.totalSpent,0).toLocaleString()}`} color="#10b981"/>
       </div>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search customers…" style={{...S.input,maxWidth:340,marginBottom:14}}/>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Customer","Phone","Loyalty Pts","Total Spent","Visits","Joined",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map((c,i)=>(
@@ -677,8 +677,8 @@ function ExpensesPage() {
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
         {cats.map(c=><FBtn key={c} active={catFilter===c} onClick={()=>setCatFilter(c)}>{c}</FBtn>)}
       </div>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Description","Category","Vendor","Date","Amount","Receipt",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {[...filtered].sort((a,b)=>new Date(b.date)-new Date(a.date)).map((e,i,arr)=>(
@@ -764,8 +764,8 @@ function AttendancePage() {
         <input value={dateFilter} onChange={e=>setDateFilter(e.target.value)} type="date" style={{...S.input,width:"auto"}}/>
         {dateFilter&&<button onClick={()=>setDateFilter("")} style={{background:"none",border:"none",color:"#3b82f6",cursor:"pointer",fontSize:12}}>Clear ×</button>}
       </div>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Staff","Date","Clock In","Clock Out","Hours",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {[...filtered].sort((a,b)=>new Date(b.date)-new Date(a.date)||a.staffName.localeCompare(b.staffName)).map((s,i,arr)=>(
@@ -834,8 +834,8 @@ function UsersPage() {
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search users…" style={{...S.input,flex:1,minWidth:180}}/>
         {["All","Admin","Manager","Cashier"].map(r=><FBtn key={r} active={filterRole===r} onClick={()=>setFilterRole(r)}>{r}</FBtn>)}
       </div>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["User","Role","Status","Last Login","Actions"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map((u,i)=>(
@@ -884,7 +884,7 @@ function VendorsPage() {
       {iModal  && <InvoiceModal vendors={vendors} products={SEED_PRODUCTS} initial={iModal.data} onSave={saveInvoice} onClose={()=>setIModal(null)}
       onAddVendor={(v,cb)=>{
         const newV={...v,id:Date.now(),status:"active"};
-        setVendors(vs=>[...vs,newV]);
+        saveVendorDb(newV);
         if(cb) cb(String(newV.id));
       }}
     />}
@@ -945,7 +945,7 @@ function InvoiceList({ invoices, vendors, onEdit }) {
           const sub=inv.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
           const open=expanded===inv.id;
           return (
-            <div key={inv.id} style={{...S.card,overflow:"hidden"}}>
+            <div key={inv.id} style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
               <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px"}}>
                 <div onClick={()=>setExpanded(open?null:inv.id)} style={{display:"flex",alignItems:"center",gap:12,flex:1,cursor:"pointer"}}>
                   <div style={{width:38,height:38,borderRadius:9,background:"rgba(16,185,129,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>🧾</div>
@@ -1004,7 +1004,7 @@ function PriceTracker({ invoices }) {
           const max=Math.max(...lp.map(e=>e.unitPrice));
           const multi=lp.length>1;
           return (
-            <div key={name} style={{...S.card,overflow:"hidden"}}>
+            <div key={name} style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderBottom:"1px solid #e2e8f0"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:34,height:34,borderRadius:8,background:"rgba(16,185,129,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>📦</div><div><div style={{color:"#0f172a",fontWeight:700,fontSize:14}}>{name}</div><div style={{color:"#6b7280",fontSize:12}}>{lp.length} vendor{lp.length!==1?"s":""} · {entries.length} purchase{entries.length!==1?"s":""}</div></div></div>
                 {multi&&max>min&&<div style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.25)",borderRadius:9,padding:"5px 12px",textAlign:"center"}}><div style={{color:"#10b981",fontSize:13,fontWeight:800}}>Save {((max-min)/max*100).toFixed(0)}%</div><div style={{color:"#166534",fontSize:11}}>vs most expensive</div></div>}
@@ -1683,7 +1683,7 @@ function ActivityPage() {
   return (
     <div>
       <PageHeader title="Activity Log" subtitle="Audit trail of all user management actions."/>
-      <div style={{...S.card,overflow:"hidden"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
         {ACTS.map((a,i)=>{const cfg=CFG[a.type]||{icon:"📋",color:"#999"};return(
           <div key={a.id} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"14px 18px",borderBottom:i<ACTS.length-1?"1px solid #e2e8f0":"none"}}>
             <div style={{width:36,height:36,borderRadius:9,background:"#0f172a",border:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:15}}>{cfg.icon}</div>
@@ -1801,12 +1801,12 @@ function PurchasePage() {
 }
 function POModal({ initial, onSave, onClose }) {
   const isEdit = !!initial?.id;
+  const { data:vendors } = useVendors();
   const [vendorId, setVendorId] = useState(String(initial?.vendorId||""));
   const [vendorName, setVendorName] = useState(initial?.vendorName||"");
   const [expected, setExpected] = useState(initial?.expectedDate||"");
   const [notes, setNotes] = useState(initial?.notes||"");
   const [items, setItems] = useState(initial?.items||[{name:"",qty:1,unit:"unit",unitCost:0}]);
-  // vendors passed as prop
   const addRow = () => setItems(is=>[...is,{name:"",qty:1,unit:"unit",unitCost:0}]);
   const upd = (i,k,v) => setItems(is=>is.map((it,idx)=>idx===i?{...it,[k]:k==="qty"||k==="unitCost"?Number(v):v}:it));
   const del = i => setItems(is=>is.filter((_,idx)=>idx!==i));
@@ -2063,8 +2063,8 @@ function WastePage() {
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
         {reasons.map(r=><FBtn key={r} active={filter===r} onClick={()=>setFilter(r)}>{r}</FBtn>)}
       </div>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e5e9f0"}}>{["Date","Product","Qty","Reason","Cost","Reported By",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.sort((a,b)=>b.date.localeCompare(a.date)).map((w,i,arr)=>(
@@ -2146,8 +2146,8 @@ function PnLPage() {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e5e9f0"}}>{["Month","Revenue","COGS","Op Costs","Net Profit","Margin"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {pnlData.slice().reverse().map((row,i)=>{
@@ -2204,8 +2204,8 @@ function BestSellersPage() {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div style={{...S.card,overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e5e9f0"}}>{["Rank","Item","Category","Units Sold","Revenue","Trend"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {data.map((d,i)=>(
@@ -2246,7 +2246,7 @@ function ReorderPage() {
             <span style={{fontSize:20}}>⚠️</span>
             <div><div style={{color:"#92400e",fontWeight:700,fontSize:13}}>{low.length} item{low.length!==1?"s":""} need reordering</div><div style={{color:"#78350f",fontSize:12}}>Set quantities below and create a purchase order, or order individually.</div></div>
           </div>
-          <div style={{...S.card,overflow:"hidden"}}>
+          <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse"}}>
               <thead><tr style={{borderBottom:"1px solid #e5e9f0"}}>{["Product","Category","In Stock","Min Level","Shortage","Suggested Order",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -2891,32 +2891,67 @@ export default function App() {
     <AuthCtx.Provider value={{user,login:u=>setUser(u),logout:()=>setUser(null)}}>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg) } }
-        * { box-sizing: border-box; }
-        html, body { margin:0; padding:0; -webkit-text-size-adjust:100%; }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin:0; padding:0; -webkit-text-size-adjust:100%; overflow-x:hidden; }
+        body { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#f4f6f9; }
         input, select, textarea, button { font-family: inherit; }
+        /* Prevent iOS zoom on inputs */
+        input, select, textarea { font-size: 16px !important; }
 
-        /* ── Responsive grid helpers ── */
-        .grid-4 { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; }
-        .grid-3 { display:grid; grid-template-columns: repeat(3,1fr); gap:14px; }
-        .grid-2 { display:grid; grid-template-columns: repeat(2,1fr); gap:14px; }
+        /* ── Modal always perfectly centered ── */
+        .modal-overlay {
+          position:fixed; inset:0;
+          background:rgba(15,23,42,0.55);
+          display:flex; align-items:center; justify-content:center;
+          z-index:1000; padding:16px;
+        }
 
-        @media (max-width:767px) {
-          .grid-4 { grid-template-columns: repeat(2,1fr) !important; gap:10px !important; }
-          .grid-3 { grid-template-columns: repeat(1,1fr) !important; gap:10px !important; }
-          .grid-2 { grid-template-columns: repeat(1,1fr) !important; gap:10px !important; }
+        /* ── Sidebar / nav ── */
+        @media (min-width:769px) {
+          .desktop-sidebar   { display:flex !important; }
+          .mob-bar           { display:none !important; }
+          .mobile-bottom-nav { display:none !important; }
+          .mobile-drawer     { display:none !important; }
+          .mobile-overlay    { display:none !important; }
+          .main-content      { padding-bottom:24px !important; }
+        }
+        @media (max-width:768px) {
+          .desktop-sidebar   { display:none !important; }
+          .mob-bar           { display:flex !important; }
+          .mobile-bottom-nav { display:flex !important; flex-direction:column; }
+          .mobile-drawer     { display:block !important; }
+          .mobile-overlay    { display:block !important; }
+          .main-content      { padding:14px !important; padding-bottom:90px !important; }
+        }
+
+        /* ── Responsive grids ── */
+        .stat-grid-4 { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px; }
+        .stat-grid-3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:20px; }
+        .stat-grid-2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-bottom:20px; }
+
+        /* ── Tables scroll on mobile ── */
+        .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:12px; }
+        .table-wrap table { min-width:520px; }
+
+        /* ── Page header stacks on mobile ── */
+        @media (max-width:600px) {
+          .page-hdr { flex-direction:column !important; align-items:flex-start !important; gap:10px !important; }
+          .page-hdr h1 { font-size:18px !important; }
+          .modal-box { border-radius:14px !important; }
+          .filter-row { flex-wrap:wrap !important; }
           .hide-mobile { display:none !important; }
-          .main-content { padding: 14px !important; padding-bottom: 90px !important; }
-          /* Make page headers stack on mobile */
-          .page-header { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; }
-          /* Make tables scroll horizontally */
-          .table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-          table { min-width: 520px; }
-          /* Modal full screen on mobile */
-          .modal-inner { border-radius: 16px 16px 0 0 !important; position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; max-width: 100% !important; max-height: 90vh !important; margin: 0 !important; }
         }
-        @media (max-width:480px) {
-          .grid-4 { grid-template-columns: repeat(2,1fr) !important; }
+
+        /* ── POS layout stacks on mobile ── */
+        @media (max-width:700px) {
+          .pos-layout { grid-template-columns:1fr !important; }
+          .pos-cart { position:fixed !important; bottom:70px !important; left:0 !important; right:0 !important; max-height:45vh !important; border-radius:18px 18px 0 0 !important; z-index:20 !important; }
         }
+
+        /* ── Scrollbar styling ── */
+        ::-webkit-scrollbar { width:5px; height:5px; }
+        ::-webkit-scrollbar-track { background:#f1f5f9; }
+        ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:10px; }
       `}</style>
       {user?<Dashboard/>:<Login/>}
     </AuthCtx.Provider>
