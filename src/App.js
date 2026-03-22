@@ -186,10 +186,46 @@ const WASTE_REASONS = ["Expired","Damaged","Over-prep","Dropped","Wrong order","
 const PO_STATUS_COLORS = { pending:{bg:"#fef3c7",text:"#92400e"}, ordered:{bg:"#dbeafe",text:"#1e40af"}, received:{bg:"#d1fae5",text:"#065f46"}, cancelled:{bg:"#fee2e2",text:"#991b1b"} };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUTH
+// AUTH — persistent user management
 // ─────────────────────────────────────────────────────────────────────────────
 const AuthCtx = createContext(null);
 const useAuth = () => useContext(AuthCtx);
+
+// Default admin account stored in localStorage
+const USERS_KEY = "doab_users";
+const SESSION_KEY = "doab_session";
+
+const getStoredUsers = () => {
+  try {
+    const stored = localStorage.getItem(USERS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch(e) {}
+  // Default admin
+  const defaults = [
+    { id:1, name:"Admin", username:"admin", password:"admin123", role:"Admin", status:"active", avatar:"AD", email:"admin@doab.com", createdAt: new Date().toISOString() }
+  ];
+  localStorage.setItem(USERS_KEY, JSON.stringify(defaults));
+  return defaults;
+};
+
+const saveStoredUsers = (users) => {
+  try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch(e) {}
+};
+
+const getSession = () => {
+  try {
+    const s = localStorage.getItem(SESSION_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch(e) { return null; }
+};
+
+const saveSession = (user) => {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch(e) {}
+};
+
+const clearSession = () => {
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI ATOMS
@@ -916,48 +952,196 @@ function ShiftModal({ initial, onSave, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USERS
+// USERS — Full user management with credentials
 // ─────────────────────────────────────────────────────────────────────────────
 function UsersPage() {
-  const MOCK_USERS=[{id:1,name:"Alex Rivera",email:"alex@store.com",role:"Admin",status:"active",avatar:"AR",lastLogin:"2026-03-10 09:14"},{id:2,name:"Sam Torres",email:"sam@store.com",role:"Manager",status:"active",avatar:"ST",lastLogin:"2026-03-10 08:30"},{id:3,name:"Jamie Lee",email:"jamie@store.com",role:"Cashier",status:"active",avatar:"JL",lastLogin:"2026-03-09 17:55"},{id:4,name:"Morgan Hill",email:"morgan@store.com",role:"Cashier",status:"inactive",avatar:"MH",lastLogin:"2026-02-20 14:10"},{id:5,name:"Casey Park",email:"casey@store.com",role:"Manager",status:"active",avatar:"CP",lastLogin:"2026-03-08 11:22"}];
-  const [users,setUsers]=useState(MOCK_USERS);
-  const [editingId,setEditingId]=useState(null);
-  const [filterRole,setFilterRole]=useState("All");
-  const [search,setSearch]=useState("");
-  const filtered=users.filter(u=>(filterRole==="All"||u.role===filterRole)&&(u.name.toLowerCase().includes(search.toLowerCase())||u.email.toLowerCase().includes(search.toLowerCase())));
-  const toggle=id=>setUsers(us=>us.map(u=>u.id===id?{...u,status:u.status==="active"?"inactive":"active"}:u));
-  const saveRole=(id,role)=>{setUsers(us=>us.map(u=>u.id===id?{...u,role}:u));setEditingId(null);};
-  const stats={total:users.length,active:users.filter(u=>u.status==="active").length,admins:users.filter(u=>u.role==="Admin").length,managers:users.filter(u=>u.role==="Manager").length};
+  const { user:currentUser } = useAuth();
+  const [users, setUsers] = useState(getStoredUsers());
+  const [modal, setModal] = useState(null); // {mode:"add"|"edit"|"password", data?}
+  const [search, setSearch] = useState("");
+  const [filterRole, setFilterRole] = useState("All");
+
+  const saveUsers = (updated) => { setUsers(updated); saveStoredUsers(updated); };
+
+  const addUser = (u) => {
+    const exists = users.some(x => x.username.toLowerCase() === u.username.toLowerCase());
+    if (exists) { alert("Username already exists."); return; }
+    const newUser = { ...u, id: Date.now(), avatar: u.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(), createdAt: new Date().toISOString(), lastLogin: "Never" };
+    saveUsers([...users, newUser]);
+    setModal(null);
+  };
+
+  const editUser = (u) => {
+    saveUsers(users.map(x => x.id === u.id ? { ...x, ...u } : x));
+    setModal(null);
+  };
+
+  const changePassword = (id, newPass) => {
+    saveUsers(users.map(x => x.id === id ? { ...x, password: newPass } : x));
+    setModal(null);
+  };
+
+  const toggle = (id) => {
+    if (id === currentUser?.id) { alert("You cannot deactivate your own account."); return; }
+    saveUsers(users.map(u => u.id === id ? { ...u, status: u.status === "active" ? "inactive" : "active" } : u));
+  };
+
+  const deleteUser = (id) => {
+    if (id === currentUser?.id) { alert("You cannot delete your own account."); return; }
+    if (!window.confirm("Delete this user? This cannot be undone.")) return;
+    saveUsers(users.filter(u => u.id !== id));
+  };
+
+  const filtered = users.filter(u =>
+    (filterRole === "All" || u.role === filterRole) &&
+    (u.name.toLowerCase().includes(search.toLowerCase()) || u.username.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const stats = { total:users.length, active:users.filter(u=>u.status==="active").length, admins:users.filter(u=>u.role==="Admin").length };
+
   return (
     <div>
-      <PageHeader title="User Management" subtitle="Manage staff accounts, roles, and access."/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:20}}>
+      <PageHeader title="User Management" subtitle="Manage staff accounts, roles, usernames and passwords."
+        action={currentUser?.role==="Admin" ? <PBtn onClick={()=>setModal({mode:"add"})}>+ Add User</PBtn> : null}/>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:14,marginBottom:20}}>
         <StatCard icon="👥" label="Total Users" value={stats.total} color="#4a7cf7"/>
-        <StatCard icon="✅" label="Active"       value={stats.active} color="#2ecc71"/>
-        <StatCard icon="🔑" label="Admins"       value={stats.admins} color="#e87c2b"/>
-        <StatCard icon="📊" label="Managers"     value={stats.managers} color="#9b59b6"/>
+        <StatCard icon="✅" label="Active" value={stats.active} color="#2ecc71"/>
+        <StatCard icon="🔑" label="Admins" value={stats.admins} color="#e87c2b"/>
       </div>
+
+      {currentUser?.role !== "Admin" && (
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 16px",marginBottom:16,color:"#92400e",fontSize:13}}>
+          🔒 Only Admin users can create, edit or delete accounts.
+        </div>
+      )}
+
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search users…" style={{...S.input,flex:1,minWidth:180}}/>
         {["All","Admin","Manager","Cashier"].map(r=><FBtn key={r} active={filterRole===r} onClick={()=>setFilterRole(r)}>{r}</FBtn>)}
       </div>
+
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["User","Role","Status","Last Login","Actions"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+          <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>
+            {["User","Username","Role","Status","Actions"].map(h=><th key={h} style={S.th}>{h}</th>)}
+          </tr></thead>
           <tbody>
             {filtered.map((u,i)=>(
-              <tr key={u.id} style={{borderBottom:i<filtered.length-1?"1px solid #e2e8f0":"none"}}>
-                <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:9}}><Avatar initials={u.avatar} size={32}/><div><div style={{color:"#374151",fontSize:13,fontWeight:600}}>{u.name}</div><div style={{color:"#6b7280",fontSize:11}}>{u.email}</div></div></div></td>
-                <td style={S.td}>{editingId===u.id?<select defaultValue={u.role} autoFocus onChange={e=>saveRole(u.id,e.target.value)} onBlur={e=>saveRole(u.id,e.target.value)} style={{background:"#f1f5f9",border:"1px solid #3b82f6",borderRadius:7,padding:"4px 8px",color:"#374151",fontSize:12}}>{["Admin","Manager","Cashier"].map(r=><option key={r}>{r}</option>)}</select>:<RoleBadge role={u.role}/>}</td>
+              <tr key={u.id} style={{borderBottom:i<filtered.length-1?"1px solid #e2e8f0":"none",background:u.id===currentUser?.id?"#eff6ff":"transparent"}}>
+                <td style={S.td}>
+                  <div style={{display:"flex",alignItems:"center",gap:9}}>
+                    <Avatar initials={u.avatar||u.name?.slice(0,2)||"??"} size={32}/>
+                    <div>
+                      <div style={{color:"#111827",fontSize:13,fontWeight:600}}>{u.name} {u.id===currentUser?.id&&<span style={{color:"#3b82f6",fontSize:10,fontWeight:700}}>(You)</span>}</div>
+                      <div style={{color:"#9ca3af",fontSize:11}}>{u.email}</div>
+                    </div>
+                  </div>
+                </td>
+                <td style={{...S.td,fontFamily:"monospace",color:"#374151",fontSize:12}}>{u.username}</td>
+                <td style={S.td}><RoleBadge role={u.role}/></td>
                 <td style={S.td}><Pill active={u.status==="active"}/></td>
-                <td style={{...S.td,color:"#6b7280",fontSize:12}}>{u.lastLogin}</td>
-                <td style={S.td}><div style={{display:"flex",gap:6}}><button onClick={()=>setEditingId(u.id)} style={{padding:"4px 10px",background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:7,color:"#3b82f6",fontSize:11,cursor:"pointer",fontWeight:600}}>Edit Role</button><button onClick={()=>toggle(u.id)} style={{padding:"4px 10px",background:u.status==="active"?"rgba(239,68,68,0.1)":"rgba(46,204,113,0.1)",border:`1px solid ${u.status==="active"?"rgba(239,68,68,0.3)":"rgba(46,204,113,0.3)"}`,borderRadius:7,color:u.status==="active"?"#f87171":"#2ecc71",fontSize:11,cursor:"pointer",fontWeight:600}}>{u.status==="active"?"Deactivate":"Activate"}</button></div></td>
+                <td style={S.td}>
+                  {currentUser?.role==="Admin" && (
+                    <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                      <button onClick={()=>setModal({mode:"edit",data:u})}
+                        style={{padding:"4px 9px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,color:"#2563eb",fontSize:11,cursor:"pointer",fontWeight:600}}>✏️ Edit</button>
+                      <button onClick={()=>setModal({mode:"password",data:u})}
+                        style={{padding:"4px 9px",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:6,color:"#7c3aed",fontSize:11,cursor:"pointer",fontWeight:600}}>🔑 Password</button>
+                      <button onClick={()=>toggle(u.id)}
+                        style={{padding:"4px 9px",background:u.status==="active"?"#fef2f2":"#f0fdf4",border:`1px solid ${u.status==="active"?"#fecaca":"#bbf7d0"}`,borderRadius:6,color:u.status==="active"?"#dc2626":"#059669",fontSize:11,cursor:"pointer",fontWeight:600}}>
+                        {u.status==="active"?"Disable":"Enable"}
+                      </button>
+                      {u.id!==currentUser?.id&&(
+                        <button onClick={()=>deleteUser(u.id)}
+                          style={{padding:"4px 9px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,color:"#dc2626",fontSize:11,cursor:"pointer",fontWeight:600}}>🗑 Delete</button>
+                      )}
+                    </div>
+                  )}
+                  {currentUser?.role!=="Admin" && u.id===currentUser?.id && (
+                    <button onClick={()=>setModal({mode:"password",data:u})}
+                      style={{padding:"4px 9px",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:6,color:"#7c3aed",fontSize:11,cursor:"pointer",fontWeight:600}}>🔑 Change My Password</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {modal?.mode==="add"    && <UserFormModal onSave={addUser}    onClose={()=>setModal(null)}/>}
+      {modal?.mode==="edit"   && <UserFormModal initial={modal.data} onSave={editUser}  onClose={()=>setModal(null)}/>}
+      {modal?.mode==="password" && <ChangePasswordModal user={modal.data} onSave={changePassword} onClose={()=>setModal(null)}/>}
     </div>
+  );
+}
+
+function UserFormModal({ initial, onSave, onClose }) {
+  const isEdit = !!initial;
+  const [f, setF] = useState(initial || { name:"", username:"", password:"", email:"", role:"Cashier", status:"active" });
+  const set = k => v => setF(x=>({...x,[k]:v}));
+  const valid = f.name.trim() && f.username.trim() && (isEdit || f.password.trim());
+  return (
+    <Modal title={isEdit ? "Edit User" : "Add New User"} onClose={onClose}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <TxtInput label="Full Name *" value={f.name} onChange={set("name")} placeholder="e.g. John Smith"/>
+        <TxtInput label="Username *" value={f.username} onChange={set("username")} placeholder="e.g. jsmith"/>
+      </div>
+      <TxtInput label="Email" value={f.email||""} onChange={set("email")} placeholder="john@doab.com" type="email"/>
+      {!isEdit && (
+        <TxtInput label="Password *" value={f.password} onChange={set("password")} placeholder="Set a strong password" type="password"/>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <Sel label="Role" value={f.role} onChange={set("role")} options={["Admin","Manager","Cashier"]}/>
+        {isEdit && <Sel label="Status" value={f.status} onChange={set("status")} options={[{v:"active",l:"Active"},{v:"inactive",l:"Inactive"}]}/>}
+      </div>
+      <div style={{background:"#f8fafc",borderRadius:9,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#6b7280"}}>
+        <strong style={{color:"#374151"}}>Role permissions:</strong><br/>
+        🔑 <strong>Admin</strong> — full access including User Management<br/>
+        📊 <strong>Manager</strong> — all modules except User Management<br/>
+        🛒 <strong>Cashier</strong> — POS, Inventory, Attendance, Checklist
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button onClick={onClose} style={{padding:"8px 16px",background:"transparent",border:"1px solid #e5e9f0",borderRadius:8,color:"#6b7280",fontSize:13,cursor:"pointer"}}>Cancel</button>
+        <PBtn onClick={()=>valid&&onSave(f)} disabled={!valid}>{isEdit?"Save Changes":"Create User"}</PBtn>
+      </div>
+    </Modal>
+  );
+}
+
+function ChangePasswordModal({ user, onSave, onClose }) {
+  const [current, setCurrent] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const { user:currentUser } = useAuth();
+
+  const submit = () => {
+    setErr("");
+    const users = getStoredUsers();
+    const found = users.find(u => u.id === user.id);
+    // Admins can change anyone's password without knowing current
+    if (currentUser?.role !== "Admin") {
+      if (found?.password !== current) { setErr("Current password is incorrect."); return; }
+    }
+    if (newPass.length < 6) { setErr("New password must be at least 6 characters."); return; }
+    if (newPass !== confirm) { setErr("Passwords don't match."); return; }
+    onSave(user.id, newPass);
+  };
+
+  return (
+    <Modal title={`Change Password — ${user.name}`} onClose={onClose}>
+      {currentUser?.role !== "Admin" && (
+        <TxtInput label="Current Password *" value={current} onChange={setCurrent} type="password" placeholder="Enter current password"/>
+      )}
+      <TxtInput label="New Password *" value={newPass} onChange={setNewPass} type="password" placeholder="Min. 6 characters"/>
+      <TxtInput label="Confirm New Password *" value={confirm} onChange={setConfirm} type="password" placeholder="Repeat new password"/>
+      {err && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",color:"#dc2626",fontSize:12,marginBottom:8,fontWeight:600}}>⚠ {err}</div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button onClick={onClose} style={{padding:"8px 16px",background:"transparent",border:"1px solid #e5e9f0",borderRadius:8,color:"#6b7280",fontSize:13,cursor:"pointer"}}>Cancel</button>
+        <PBtn onClick={submit} disabled={!newPass||!confirm}>Update Password</PBtn>
+      </div>
+    </Modal>
   );
 }
 
@@ -1831,30 +2015,60 @@ function ActivityPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 function Login() {
   const {login}=useAuth();
-  const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setL]=useState(false); const [show,setShow]=useState(false);
-  const submit=()=>{ setErr(""); if(!u||!p)return setErr("Fill in all fields."); setL(true); setTimeout(()=>{ if(u==="1"&&p==="1"){login({name:"Admin",role:"Admin",avatar:"AD",email:"1"});}else{setErr("Invalid credentials.");setL(false);} },700); };
+  const [u,setU]=useState(""); const [p,setP]=useState("");
+  const [err,setErr]=useState(""); const [loading,setL]=useState(false);
+  const [show,setShow]=useState(false);
+
+  const submit=()=>{
+    setErr("");
+    if(!u||!p) return setErr("Please enter username and password.");
+    setL(true);
+    setTimeout(()=>{
+      const users = getStoredUsers();
+      const found = users.find(usr =>
+        usr.username.toLowerCase()===u.toLowerCase() &&
+        usr.password===p &&
+        usr.status==="active"
+      );
+      if(found){
+        const session = {id:found.id,name:found.name,role:found.role,avatar:found.avatar,email:found.email,username:found.username};
+        saveSession(session);
+        login(session);
+      } else {
+        setErr("Invalid username or password.");
+        setL(false);
+      }
+    },600);
+  };
+
   return (
     <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
       <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(59,130,246,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.08) 1px,transparent 1px)",backgroundSize:"44px 44px",pointerEvents:"none"}}/>
-      <div style={{width:400,zIndex:1,padding:"0 16px"}}>
+      <div style={{width:420,zIndex:1,padding:"0 16px"}}>
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:62,height:62,background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",borderRadius:18,marginBottom:12,boxShadow:"0 8px 28px rgba(59,130,246,0.3)"}}><span style={{fontSize:28}}>🏪</span></div>
-          <div style={{color:"#0f172a",fontSize:24,fontWeight:800}}>Deli On A Bagel Cafe</div>
-          <div style={{color:"#374151",fontSize:12,marginTop:3,letterSpacing:"0.5px"}}>CAFE & DELI</div>
+          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:68,height:68,background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",borderRadius:20,marginBottom:14,boxShadow:"0 8px 28px rgba(59,130,246,0.3)"}}><span style={{fontSize:32}}>🥯</span></div>
+          <div style={{color:"#0f172a",fontSize:26,fontWeight:800,letterSpacing:"-0.5px"}}>Deli On A Bagel Cafe</div>
+          <div style={{color:"#6b7280",fontSize:12,marginTop:4,letterSpacing:"1px",textTransform:"uppercase"}}>Store Management</div>
         </div>
-        <div style={{background:"#ffffff",border:"1px solid #e2e8f0",borderRadius:18,boxShadow:"0 8px 32px rgba(15,23,42,0.1)",padding:"30px 30px 26px"}}>
-          <div style={{color:"#0f172a",fontSize:18,fontWeight:800,marginBottom:3}}>Welcome back</div>
-          <div style={{color:"#6b7280",fontSize:13,marginBottom:22}}>Sign in to continue</div>
-          {err&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:9,padding:"9px 13px",color:"#f87171",fontSize:13,marginBottom:14}}>⚠ {err}</div>}
-          <div style={{color:"#9ca3af",fontSize:10,fontWeight:700,letterSpacing:"0.8px",marginBottom:5,textTransform:"uppercase"}}>Username</div>
-          <input value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="Enter username" style={{...S.input,marginBottom:14}}/>
-          <div style={{color:"#9ca3af",fontSize:10,fontWeight:700,letterSpacing:"0.8px",marginBottom:5,textTransform:"uppercase"}}>Password</div>
-          <div style={{position:"relative",marginBottom:22}}>
-            <input value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="••••••••" type={show?"text":"password"} style={{...S.input,paddingRight:38}}/>
-            <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#6b7280",fontSize:14}}>{show?"🙈":"👁"}</button>
+        <div style={{background:"#ffffff",border:"1px solid #e2e8f0",borderRadius:20,boxShadow:"0 8px 40px rgba(15,23,42,0.12)",padding:"32px 32px 28px"}}>
+          <div style={{color:"#111827",fontSize:20,fontWeight:800,marginBottom:4}}>Welcome back</div>
+          <div style={{color:"#6b7280",fontSize:13,marginBottom:24}}>Sign in with your credentials</div>
+          {err&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:16,fontWeight:600}}>⚠ {err}</div>}
+          <div style={{color:"#6b7280",fontSize:10,fontWeight:700,letterSpacing:"0.8px",marginBottom:6,textTransform:"uppercase"}}>Username</div>
+          <input value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="Enter your username" style={{...S.input,marginBottom:16}}/>
+          <div style={{color:"#6b7280",fontSize:10,fontWeight:700,letterSpacing:"0.8px",marginBottom:6,textTransform:"uppercase"}}>Password</div>
+          <div style={{position:"relative",marginBottom:24}}>
+            <input value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="••••••••" type={show?"text":"password"} style={{...S.input,paddingRight:40}}/>
+            <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:16,lineHeight:1}}>{show?"🙈":"👁"}</button>
           </div>
-          <button onClick={submit} disabled={loading} style={{width:"100%",background:loading?"#1e3a8a":"linear-gradient(135deg,#1e3a8a,#3b82f6)",border:"none",borderRadius:10,padding:"12px",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 16px rgba(59,130,246,0.25)"}}>{loading?"Signing in…":"Sign In →"}</button>
-          <div style={{marginTop:16,background:"#f1f5f9",borderRadius:9,padding:"9px 13px",border:"1px solid #e2e8f0"}}><div style={{color:"#374151",fontSize:10,marginBottom:2,letterSpacing:"0.7px",fontWeight:600}}>DEMO CREDENTIALS</div><div style={{color:"#9ca3af",fontSize:12,fontFamily:"monospace"}}>username: <strong style={{color:"#9ca3af"}}>1</strong> &nbsp;·&nbsp; password: <strong style={{color:"#9ca3af"}}>1</strong></div></div>
+          <button onClick={submit} disabled={loading} style={{width:"100%",background:loading?"#93c5fd":"linear-gradient(135deg,#1e3a8a,#3b82f6)",border:"none",borderRadius:12,padding:"13px",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 20px rgba(59,130,246,0.3)",letterSpacing:"0.3px"}}>
+            {loading?"Signing in…":"Sign In →"}
+          </button>
+          <div style={{marginTop:20,padding:"12px 14px",background:"#f8fafc",borderRadius:10,border:"1px solid #e5e9f0"}}>
+            <div style={{color:"#374151",fontSize:11,fontWeight:700,marginBottom:4}}>DEFAULT CREDENTIALS</div>
+            <div style={{color:"#6b7280",fontSize:12,fontFamily:"monospace"}}>Username: <strong style={{color:"#374151"}}>admin</strong> · Password: <strong style={{color:"#374151"}}>admin123</strong></div>
+            <div style={{color:"#9ca3af",fontSize:11,marginTop:4}}>Change these in User Management after logging in.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -3016,9 +3230,11 @@ function Dashboard() {
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [user,setUser]=useState(null);
+  const [user,setUser]=useState(()=>getSession());
+  const login = (u) => { saveSession(u); setUser(u); };
+  const logout = () => { clearSession(); setUser(null); };
   return (
-    <AuthCtx.Provider value={{user,login:u=>setUser(u),logout:()=>setUser(null)}}>
+    <AuthCtx.Provider value={{user,login,logout}}>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg) } }
         *, *::before, *::after { box-sizing: border-box; }
