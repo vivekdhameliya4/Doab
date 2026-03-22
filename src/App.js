@@ -6,6 +6,82 @@ import {
   useShifts, useSchedules, LoadingScreen, DbError, HAS_SUPABASE,
 } from "./hooks";
 
+
+// ── Download utilities ────────────────────────────────────────────────────────
+const downloadCSV = (filename, headers, rows) => {
+  const escape = v => {
+    const s = String(v ?? '').replace(/"/g, '""');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+  };
+  const csv = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+};
+
+const downloadTimesheetCSV = (shifts) => {
+  // Group by week (Sun-Sat) and employee
+  const rows = [];
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  
+  // Get all unique employee names
+  const employees = [...new Set(shifts.map(s => s.staffName))].sort();
+  
+  // Get all unique dates sorted
+  const dates = [...new Set(shifts.map(s => s.date))].sort();
+  
+  // Get week start (Sunday) for each date
+  const getWeekStart = (dateStr) => {
+    const d = new Date(dateStr);
+    const day = d.getDay();
+    d.setDate(d.getDate() - day);
+    return d.toISOString().split('T')[0];
+  };
+  
+  const weeks = [...new Set(dates.map(getWeekStart))].sort();
+  
+  // Header
+  const headers = ['Employee', 'Week', 'Sun','Mon','Tue','Wed','Thu','Fri','Sat',
+                   'Sun In','Sun Out','Mon In','Mon Out','Tue In','Tue Out',
+                   'Wed In','Wed Out','Thu In','Thu Out','Fri In','Fri Out',
+                   'Sat In','Sat Out','Total Hours'];
+  
+  weeks.forEach(weekStart => {
+    const weekDates = days.map((_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      return d.toISOString().split('T')[0];
+    });
+    
+    employees.forEach(emp => {
+      const row = [emp, `Week of ${weekStart}`];
+      let totalHours = 0;
+      
+      // Daily hours
+      const dailyHours = weekDates.map(date => {
+        const shift = shifts.find(s => s.staffName === emp && s.date === date);
+        if (shift) { totalHours += Number(shift.hours || 0); }
+        return shift ? Number(shift.hours || 0) : '';
+      });
+      row.push(...dailyHours);
+      
+      // Clock in/out per day
+      weekDates.forEach(date => {
+        const shift = shifts.find(s => s.staffName === emp && s.date === date);
+        row.push(shift?.clockIn || '');
+        row.push(shift?.clockOut || '');
+      });
+      
+      row.push(totalHours.toFixed(2));
+      rows.push(row);
+    });
+  });
+  
+  downloadCSV(`timesheet_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+};
+
 // ── API endpoint — proxy server for production, direct for dev ────────────────
 // Always use relative path — React proxy forwards to server.js (no CORS issues)
 const IS_ARTIFACT = typeof window !== "undefined" && window.location.hostname.includes("claude.ai");
@@ -353,7 +429,14 @@ function InventoryPage() {
   };
   return (
     <div>
-      <PageHeader title="Inventory" subtitle="Manage products, stock levels and pricing." action={<PBtn onClick={()=>setModal({mode:"add"})}>+ Add Product</PBtn>}/>
+      <PageHeader title="Inventory" subtitle="Manage products, stock levels and pricing." action={
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>downloadCSV(`inventory_${new Date().toISOString().split('T')[0]}.csv`,
+            ["Name","Category","Sell Price","Cost","Stock","Min Stock","Unit","Barcode"],
+            products.map(p=>[p.name,p.category,p.price,p.cost,p.stock,p.minStock,p.unit,p.barcode])
+          )} style={{padding:"9px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9,color:"#059669",fontSize:13,fontWeight:700,cursor:"pointer"}}>⬇ Export CSV</button>
+          <PBtn onClick={()=>setModal({mode:"add"})}>+ Add Product</PBtn>
+        </div>}/>
       {lowStock.length>0&&<div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:11,padding:"11px 16px",marginBottom:18,display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:18}}>⚠️</span><span style={{color:"#f59e0b",fontSize:13,fontWeight:600}}>{lowStock.length} items below minimum stock level: </span><span style={{color:"#9ca3af",fontSize:13}}>{lowStock.map(p=>p.name).join(", ")}</span></div>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:20}}>
         <StatCard icon="📦" label="Total Products" value={products.length} color="#4a7cf7"/>
@@ -426,7 +509,11 @@ function ReportsPage() {
   const totalOrders = SALES_DATA.reduce((s,d)=>s+d.orders,0);
   return (
     <div>
-      <PageHeader title="Sales Reports" subtitle="Analyze your store's performance and trends."/>
+      <PageHeader title="Sales Reports" subtitle="Analyze your store's performance and trends." action={
+        <button onClick={()=>downloadCSV(`sales_report_${new Date().toISOString().split('T')[0]}.csv`,
+          ["Day","Sales ($)","Orders"],
+          SALES_DATA.map(d=>[d.day,d.sales,d.orders])
+        )} style={{padding:"9px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9,color:"#059669",fontSize:13,fontWeight:700,cursor:"pointer"}}>⬇ Export CSV</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:24}}>
         <StatCard icon="💰" label="This Week"     value={`$${(totalWeek/1000).toFixed(1)}k`} color="#2ecc71" sub="vs $24.1k last week"/>
         <StatCard icon="📋" label="Total Orders"  value={totalOrders} color="#4a7cf7" sub="+8% vs last week"/>
@@ -509,7 +596,14 @@ function CustomersPage() {
   if(error) return <DbError message={error}/>;
   return (
     <div>
-      <PageHeader title="Customers & Loyalty" subtitle="Manage customer profiles and loyalty points." action={<PBtn onClick={()=>setModal({mode:"add"})}>+ Add Customer</PBtn>}/>
+      <PageHeader title="Customers & Loyalty" subtitle="Manage customer profiles and loyalty points." action={
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>downloadCSV(`customers_${new Date().toISOString().split('T')[0]}.csv`,
+            ["Name","Phone","Email","Loyalty Points","Total Spent","Visits","Joined"],
+            customers.map(c=>[c.name,c.phone,c.email,c.loyaltyPts,c.totalSpent,c.visits,c.joined])
+          )} style={{padding:"9px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9,color:"#059669",fontSize:13,fontWeight:700,cursor:"pointer"}}>⬇ Export CSV</button>
+          <PBtn onClick={()=>setModal({mode:"add"})}>+ Add Customer</PBtn>
+        </div>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:20}}>
         <StatCard icon="🧑‍🤝‍🧑" label="Total Customers" value={customers.length} color="#f59e0b"/>
         <StatCard icon="⭐" label="Total Loyalty Pts" value={customers.reduce((s,c)=>s+c.loyaltyPts,0).toLocaleString()} color="#e87c2b"/>
@@ -570,7 +664,14 @@ function ExpensesPage() {
   if(error) return <DbError message={error}/>;
   return (
     <div>
-      <PageHeader title="Expenses" subtitle="Track all store costs and outgoings." action={<PBtn onClick={()=>setModal({mode:"add"})}>+ Add Expense</PBtn>}/>
+      <PageHeader title="Expenses" subtitle="Track all store costs and outgoings." action={
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>downloadCSV(`expenses_${new Date().toISOString().split('T')[0]}.csv`,
+            ["Description","Category","Vendor","Amount","Date","Receipt"],
+            expenses.map(e=>[e.description,e.category,e.vendor,e.amount,e.date,e.receipt])
+          )} style={{padding:"9px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9,color:"#059669",fontSize:13,fontWeight:700,cursor:"pointer"}}>⬇ Export CSV</button>
+          <PBtn onClick={()=>setModal({mode:"add"})}>+ Add Expense</PBtn>
+        </div>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:20}}>
         <StatCard icon="💳" label="Total This Month" value={`$${total.toLocaleString("en",{minimumFractionDigits:2})}`} color="#ec4899"/>
         <StatCard icon="📋" label="Total Entries"    value={expenses.length} color="#6366f1"/>
@@ -631,58 +732,162 @@ function ExpenseModal({ initial, onSave, onClose }) {
 function AttendancePage() {
   const { data:shifts, loading, error, save:saveDb } = useShifts();
   const [modal,setModal]=useState(null);
+  const [view,setView]=useState("daily"); // daily | weekly
   const [dateFilter,setDateFilter]=useState("");
+  const [weekFilter,setWeekFilter]=useState(() => {
+    const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().split("T")[0];
+  });
   const today=new Date().toISOString().split("T")[0];
   const todayShifts=shifts.filter(s=>s.date===today);
-  const filtered=dateFilter?shifts.filter(s=>s.date===dateFilter):shifts;
+  const filtered=dateFilter?shifts.filter(s=>s.date===dateFilter):[...shifts].sort((a,b)=>b.date.localeCompare(a.date)||a.staffName.localeCompare(b.staffName));
   const save=async s=>{ await saveDb(s); setModal(null); };
+
+  // Weekly timesheet helpers
+  const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const weekDates=DAYS.map((_,i)=>{ const d=new Date(weekFilter); d.setDate(d.getDate()+i); return d.toISOString().split("T")[0]; });
+  const employees=[...new Set(shifts.map(s=>s.staffName))].sort();
+  const getShift=(emp,date)=>shifts.find(s=>s.staffName===emp&&s.date===date);
+  const weekTotal=(emp)=>weekDates.reduce((t,d)=>t+Number(getShift(emp,d)?.hours||0),0);
+  const prevWeek=()=>{ const d=new Date(weekFilter); d.setDate(d.getDate()-7); setWeekFilter(d.toISOString().split("T")[0]); };
+  const nextWeek=()=>{ const d=new Date(weekFilter); d.setDate(d.getDate()+7); setWeekFilter(d.toISOString().split("T")[0]); };
+
   if(loading) return <LoadingScreen/>;
   if(error) return <DbError message={error}/>;
   return (
     <div>
-      <PageHeader title="Staff Attendance" subtitle="Track shifts, clock-in/out times and hours worked." action={<PBtn onClick={()=>setModal({mode:"add"})}>+ Log Shift</PBtn>}/>
+      <PageHeader title="Staff Attendance" subtitle="Track shifts, clock-in/out and generate timesheets." action={
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>downloadTimesheetCSV(shifts)}
+            style={{padding:"9px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9,color:"#059669",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            ⬇ Export Timesheet
+          </button>
+          <PBtn onClick={()=>setModal({mode:"add"})}>+ Log Shift</PBtn>
+        </div>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:20}}>
-        <StatCard icon="👷" label="On Shift Today"  value={todayShifts.length} color="#06b6d4"/>
-        <StatCard icon="⏱️" label="Total Hours Today" value={todayShifts.reduce((s,x)=>s+Number(x.hours||0),0).toFixed(1)+"h"} color="#3b82f6"/>
-        <StatCard icon="📋" label="Shifts This Week" value={shifts.length} color="#6366f1"/>
-        <StatCard icon="👥" label="Total Staff"      value={SEED_STAFF.length} color="#9b59b6"/>
+        <StatCard icon="👷" label="On Shift Today" value={todayShifts.length} color="#06b6d4"/>
+        <StatCard icon="⏱️" label="Hours Today" value={todayShifts.reduce((s,x)=>s+Number(x.hours||0),0).toFixed(1)+"h"} color="#3b82f6"/>
+        <StatCard icon="📋" label="Total Shifts" value={shifts.length} color="#6366f1"/>
+        <StatCard icon="⌚" label="Total Hours" value={shifts.reduce((s,x)=>s+Number(x.hours||0),0).toFixed(1)+"h"} color="#9b59b6"/>
       </div>
-      <div style={{...S.card,padding:"16px",marginBottom:18}}>
-        <div style={{color:"#0f172a",fontWeight:700,fontSize:14,marginBottom:12}}>Today's Roster — {today}</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
-          {SEED_STAFF.map(staff=>{
-            const shift=todayShifts.find(s=>s.staffId===staff.id);
-            return (
-              <div key={staff.id} style={{background:"#f1f5f9",borderRadius:11,padding:"12px 14px",border:`1px solid ${shift?"rgba(16,185,129,0.25)":"#374151"}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><Avatar initials={staff.avatar} size={28}/><div><div style={{color:"#374151",fontSize:12,fontWeight:600}}>{staff.name}</div><div style={{color:"#6b7280",fontSize:10}}>{staff.role}</div></div></div>
-                {shift?(<><div style={{color:"#10b981",fontSize:11,fontWeight:600}}>✓ Present</div><div style={{color:"#374151",fontSize:11}}>{shift.clockIn} → {shift.clockOut} · {shift.hours}h</div></>):(<div style={{color:"#6b7280",fontSize:11}}>No shift logged</div>)}
-              </div>
-            );
-          })}
+
+      {/* View toggle */}
+      <div style={{display:"flex",gap:5,marginBottom:16,background:"#f8fafc",borderRadius:10,padding:4,width:"fit-content"}}>
+        {["daily","weekly"].map(v=>(
+          <button key={v} onClick={()=>setView(v)} style={{padding:"7px 18px",borderRadius:8,border:"none",cursor:"pointer",
+            background:view===v?"#1e3a8a":"transparent",color:view===v?"#fff":"#6b7280",fontWeight:700,fontSize:13}}>
+            {v==="daily"?"📋 Daily Log":"📅 Weekly Timesheet"}
+          </button>
+        ))}
+      </div>
+
+      {view==="daily" && (<>
+        <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
+          <input value={dateFilter} onChange={e=>setDateFilter(e.target.value)} type="date" style={{...S.input,width:"auto"}}/>
+          {dateFilter&&<button onClick={()=>setDateFilter("")} style={{background:"none",border:"none",color:"#3b82f6",cursor:"pointer",fontSize:12}}>Clear ×</button>}
+          {dateFilter&&<button onClick={()=>downloadCSV(`shifts_${dateFilter}.csv`,
+            ["Staff","Date","Clock In","Clock Out","Hours"],
+            filtered.map(s=>[s.staffName,s.date,s.clockIn,s.clockOut,s.hours])
+          )} style={{padding:"6px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,color:"#059669",fontSize:12,cursor:"pointer",fontWeight:600}}>⬇ Export</button>}
         </div>
-      </div>
-      <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:14}}>
-        <div style={{color:"#9ca3af",fontSize:13}}>Filter by date:</div>
-        <input value={dateFilter} onChange={e=>setDateFilter(e.target.value)} type="date" style={{...S.input,width:"auto"}}/>
-        {dateFilter&&<button onClick={()=>setDateFilter("")} style={{background:"none",border:"none",color:"#3b82f6",cursor:"pointer",fontSize:12}}>Clear ×</button>}
-      </div>
-      <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Staff","Date","Clock In","Clock Out","Hours",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-          <tbody>
-            {[...filtered].sort((a,b)=>new Date(b.date)-new Date(a.date)||a.staffName.localeCompare(b.staffName)).map((s,i,arr)=>(
-              <tr key={s.id} style={{borderBottom:i<arr.length-1?"1px solid #e2e8f0":"none"}}>
-                <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><Avatar initials={s.staffName.split(" ").map(w=>w[0]).join("")} size={28}/><span style={{color:"#374151",fontSize:13,fontWeight:600}}>{s.staffName}</span></div></td>
-                <td style={{...S.td,color:"#9ca3af"}}>{s.date}</td>
-                <td style={{...S.td,color:"#10b981",fontWeight:600}}>{s.clockIn}</td>
-                <td style={{...S.td,color:"#f87171",fontWeight:600}}>{s.clockOut}</td>
-                <td style={S.td}><span style={{background:"rgba(6,182,212,0.1)",color:"#06b6d4",borderRadius:20,padding:"2px 9px",fontSize:12,fontWeight:700}}>{s.hours}h</span></td>
-                <td style={S.td}><button onClick={()=>setModal({mode:"edit",data:s})} style={{padding:"4px 10px",background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:7,color:"#3b82f6",fontSize:11,cursor:"pointer",fontWeight:600}}>✏️ Edit</button></td>
+        <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
+            <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Staff","Date","Clock In","Clock Out","Hours",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {filtered.map((s,i,arr)=>(
+                <tr key={s.id||i} style={{borderBottom:i<arr.length-1?"1px solid #e2e8f0":"none"}}>
+                  <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><Avatar initials={(s.staffName||"?").split(" ").map(w=>w[0]).join("")} size={28}/><span style={{color:"#374151",fontSize:13,fontWeight:600}}>{s.staffName}</span></div></td>
+                  <td style={{...S.td,color:"#6b7280"}}>{s.date}</td>
+                  <td style={{...S.td,color:"#10b981",fontWeight:600}}>{s.clockIn}</td>
+                  <td style={{...S.td,color:"#ef4444",fontWeight:600}}>{s.clockOut}</td>
+                  <td style={S.td}><span style={{background:"rgba(6,182,212,0.1)",color:"#06b6d4",borderRadius:20,padding:"2px 9px",fontSize:12,fontWeight:700}}>{s.hours}h</span></td>
+                  <td style={S.td}><button onClick={()=>setModal({mode:"edit",data:s})} style={{padding:"4px 10px",background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:7,color:"#3b82f6",fontSize:11,cursor:"pointer",fontWeight:600}}>✏️ Edit</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>)}
+
+      {view==="weekly" && (<>
+        {/* Week navigator */}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+          <button onClick={prevWeek} style={{padding:"7px 14px",background:"#f8fafc",border:"1px solid #e5e9f0",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>← Prev</button>
+          <div style={{color:"#111827",fontWeight:700,fontSize:14}}>Week: {weekFilter} → {weekDates[6]}</div>
+          <button onClick={nextWeek} style={{padding:"7px 14px",background:"#f8fafc",border:"1px solid #e5e9f0",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>Next →</button>
+          <button onClick={()=>downloadTimesheetCSV(shifts.filter(s=>weekDates.includes(s.date)))}
+            style={{padding:"7px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,color:"#059669",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            ⬇ Export This Week
+          </button>
+        </div>
+        {/* Timesheet table */}
+        <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+            <thead>
+              <tr style={{background:"#f8fafc",borderBottom:"2px solid #e5e9f0"}}>
+                <th style={{...S.th,minWidth:130}}>Employee</th>
+                {DAYS.map((d,i)=>(
+                  <th key={d} style={{...S.th,textAlign:"center",minWidth:100,
+                    background:weekDates[i]===today?"#eff6ff":"#f8fafc",
+                    color:weekDates[i]===today?"#1d4ed8":"#6b7280"}}>
+                    <div>{d}</div>
+                    <div style={{fontSize:10,fontWeight:400}}>{weekDates[i].slice(5)}</div>
+                  </th>
+                ))}
+                <th style={{...S.th,textAlign:"center",background:"#f0fdf4",color:"#059669",minWidth:80}}>Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {employees.length===0 && (
+                <tr><td colSpan={9} style={{...S.td,textAlign:"center",color:"#9ca3af"}}>No shifts recorded yet.</td></tr>
+              )}
+              {employees.map((emp,ei)=>(
+                <tr key={emp} style={{borderBottom:"1px solid #e5e9f0",background:ei%2===0?"#fff":"#fafbfc"}}>
+                  <td style={S.td}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <Avatar initials={emp.split(" ").map(w=>w[0]).join("")} size={28}/>
+                      <span style={{color:"#111827",fontWeight:600,fontSize:13}}>{emp}</span>
+                    </div>
+                  </td>
+                  {weekDates.map(date=>{
+                    const shift=getShift(emp,date);
+                    return (
+                      <td key={date} style={{...S.td,textAlign:"center",padding:"8px 6px",
+                        background:date===today?"rgba(59,130,246,0.04)":"transparent"}}>
+                        {shift ? (
+                          <div>
+                            <div style={{color:"#059669",fontSize:12,fontWeight:700}}>{Number(shift.hours||0).toFixed(1)}h</div>
+                            <div style={{color:"#9ca3af",fontSize:10}}>{shift.clockIn}–{shift.clockOut}</div>
+                          </div>
+                        ) : (
+                          <span style={{color:"#d1d5db",fontSize:12}}>—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td style={{...S.td,textAlign:"center",background:"#f0fdf4"}}>
+                    <span style={{color:"#059669",fontWeight:800,fontSize:14}}>{weekTotal(emp).toFixed(1)}h</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {employees.length>0&&(
+              <tfoot>
+                <tr style={{borderTop:"2px solid #e5e9f0",background:"#f8fafc"}}>
+                  <td style={{...S.td,fontWeight:700,color:"#374151"}}>Daily Total</td>
+                  {weekDates.map(date=>{
+                    const total=shifts.filter(s=>s.date===date).reduce((t,s)=>t+Number(s.hours||0),0);
+                    return <td key={date} style={{...S.td,textAlign:"center",fontWeight:700,color:total>0?"#3b82f6":"#d1d5db"}}>{total>0?total.toFixed(1)+"h":"—"}</td>;
+                  })}
+                  <td style={{...S.td,textAlign:"center",fontWeight:800,color:"#059669",fontSize:15}}>
+                    {shifts.filter(s=>weekDates.includes(s.date)).reduce((t,s)=>t+Number(s.hours||0),0).toFixed(1)}h
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </>)}
+
       {modal&&<ShiftModal initial={modal.data} onSave={save} onClose={()=>setModal(null)}/>}
     </div>
   );
@@ -785,8 +990,8 @@ function VendorsPage() {
       {tab==="vendors"  && <VendorList vendors={vendors} invoices={invoices} onSelect={setDetailV} onEdit={v=>setVModal({mode:"edit",data:v})}/>}
       {tab==="invoices" && <InvoiceList invoices={invoices} vendors={vendors} onEdit={iv=>setIModal({mode:"edit",data:iv})}/>}
       {tab==="prices"   && <PriceTracker invoices={invoices}/>}
-      {vModal  && <VendorModal  initial={vModal.data}  onSave={saveVendor}  onClose={()=>setVModal(null)}/>}
-      {iModal  && <InvoiceModal vendors={vendors} products={SEED_PRODUCTS} initial={iModal.data} onSave={saveInvoice} onClose={()=>setIModal(null)}
+      {vModal  && <VendorModal  initial={vModal.data}  onSave={saveVendor}  onClose={()=>setVModal(null)} existingVendors={vendors}/>}
+      {iModal  && <InvoiceModal vendors={vendors} products={SEED_PRODUCTS} allInvoices={invoices} initial={iModal.data} onSave={saveInvoice} onClose={()=>setIModal(null)}
       onAddVendor={async (v,cb)=>{
         const saved = await saveVendorDb({...v,status:"active"});
         const newId = saved?.id || Date.now();
@@ -841,9 +1046,22 @@ function InvoiceList({ invoices, vendors, onEdit }) {
   const [fv,setFv]=useState("All");
   const names=["All",...new Set(invoices.map(i=>i.vendorName))];
   const sorted=[...(fv==="All"?invoices:invoices.filter(i=>i.vendorName===fv))].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const exportInvoices = () => {
+    const rows = [];
+    sorted.forEach(inv => {
+      inv.items.forEach(it => {
+        rows.push([inv.invoiceNo, inv.vendorName, inv.date, it.name, it.qty, it.unit, it.unitPrice, (it.qty*it.unitPrice).toFixed(2)]);
+      });
+    });
+    downloadCSV(`invoices_${new Date().toISOString().split('T')[0]}.csv`,
+      ["Invoice No","Vendor","Date","Item","Qty","Unit","Unit Price","Line Total"], rows);
+  };
   return (
     <div>
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>{names.map(n=><FBtn key={n} active={fv===n} onClick={()=>setFv(n)}>{n}</FBtn>)}</div>
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        {names.map(n=><FBtn key={n} active={fv===n} onClick={()=>setFv(n)}>{n}</FBtn>)}
+        <button onClick={exportInvoices} style={{marginLeft:"auto",padding:"7px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,color:"#059669",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬇ Export CSV</button>
+      </div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {sorted.length===0&&<div style={{color:"#374151",textAlign:"center",padding:40}}>No invoices yet. Click "+ Add Invoice" to upload one.</div>}
         {sorted.map(inv=>{
@@ -942,13 +1160,15 @@ function PriceTracker({ invoices }) {
   );
 }
 
-function VendorModal({ initial, onSave, onClose }) {
+function VendorModal({ initial, onSave, onClose, existingVendors=[] }) {
   const [f,setF]=useState(initial||{name:"",contact:"",phone:"",email:"",address:"",category:"Groceries",status:"active"});
   const set=k=>v=>setF(x=>({...x,[k]:v}));
-  const valid=f.name.trim()&&f.contact.trim();
+  const isDuplicate = !initial && existingVendors.some(v => v.name.trim().toLowerCase() === f.name.trim().toLowerCase());
+  const valid=f.name.trim()&&f.contact.trim()&&!isDuplicate;
   return (
     <Modal title={initial?"Edit Vendor":"Add Vendor"} onClose={onClose}>
-      <TxtInput label="Company Name *" value={f.name}    onChange={set("name")}    placeholder="e.g. FreshCo Distributors"/>
+      <TxtInput label="Company Name *" value={f.name} onChange={set("name")} placeholder="e.g. FreshCo Distributors"/>
+      {isDuplicate && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginTop:-8,marginBottom:8,color:"#dc2626",fontSize:12,fontWeight:600}}>⚠ A vendor with this name already exists.</div>}
       <TxtInput label="Contact Person *" value={f.contact} onChange={set("contact")} placeholder="e.g. John Smith"/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <TxtInput label="Phone" value={f.phone} onChange={set("phone")} placeholder="+1 555-0000"/>
@@ -1054,7 +1274,7 @@ function ItemNameInput({ value, products, onChange, onSelect, hasError }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // INVOICE MODAL — complete rewrite, validation fixed, PDF support, add+edit
 // ─────────────────────────────────────────────────────────────────────────────
-function InvoiceModal({ vendors, products = [], initial, onSave, onClose, onAddVendor }) {
+function InvoiceModal({ vendors, products = [], allInvoices = [], initial, onSave, onClose, onAddVendor }) {
   const isEdit=!!initial;
   // ── state ──
   const [step,             setStep]          = useState(isEdit?2:1);
@@ -1074,9 +1294,9 @@ function InvoiceModal({ vendors, products = [], initial, onSave, onClose, onAddV
   const [newVendorPrompt,  setNewVendorPrompt] = useState(null); // { name, category }
 
   // ── VALIDATION ──
-  // vOk: either vendor exists in list, OR vendorId is set (newly added vendor not yet in list)
   const vOk  = vendorId !== "" && (vendors.some(v=>String(v.id)===String(vendorId)) || vendorId.length > 0);
-  const nOk  = invoiceNo.trim().length > 0;
+  const isDupInvoice = !isEdit && invoiceNo.trim() && allInvoices?.some(i => i.invoiceNo?.trim().toLowerCase() === invoiceNo.trim().toLowerCase());
+  const nOk  = invoiceNo.trim().length > 0 && !isDupInvoice;
   const dOk  = date.length > 0;
   const iOk  = items.length > 0 && items.every(it => it.name?.trim() && Number(it.qty) > 0 && Number(it.unitPrice) >= 0);
   const valid = vOk && nOk && dOk && iOk;
@@ -1445,7 +1665,10 @@ Make sure every number is a plain number (not a string). Make sure lineTotal = q
               </select>
               {suggested.vendorName&&!vOk&&<div style={{color:"#f59e0b",fontSize:11,marginTop:3}}>AI detected: "{suggested.vendorName}"</div>}
             </div>
-            <TxtInput label="Invoice Number *" value={invoiceNo} onChange={setInvoiceNo} placeholder="e.g. FC-1099"/>
+            <div>
+              <TxtInput label="Invoice Number *" value={invoiceNo} onChange={setInvoiceNo} placeholder="e.g. FC-1099"/>
+              {isDupInvoice && <div style={{color:"#dc2626",fontSize:11,marginTop:-8,marginBottom:8,fontWeight:600}}>⚠ Invoice #{invoiceNo} already exists.</div>}
+            </div>
           </div>
           <TxtInput label="Invoice Date *" value={date} onChange={setDate} type="date"/>
 
