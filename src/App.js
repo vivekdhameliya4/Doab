@@ -815,10 +815,10 @@ function VendorsPage() {
       {tab==="prices"   && <PriceTracker invoices={invoices}/>}
       {vModal  && <VendorModal  initial={vModal.data}  onSave={saveVendor}  onClose={()=>setVModal(null)}/>}
       {iModal  && <InvoiceModal vendors={vendors} products={SEED_PRODUCTS} initial={iModal.data} onSave={saveInvoice} onClose={()=>setIModal(null)}
-      onAddVendor={(v,cb)=>{
-        const newV={...v,id:Date.now(),status:"active"};
-        saveVendorDb(newV);
-        if(cb) cb(String(newV.id));
+      onAddVendor={async (v,cb)=>{
+        const saved = await saveVendorDb({...v,status:"active"});
+        const newId = saved?.id || Date.now();
+        if(cb) cb(String(newId));
       }}
     />}
       {detailV && <VendorDetail vendor={detailV} invoices={invoices.filter(i=>i.vendorId===detailV.id)} onEdit={()=>{setVModal({mode:"edit",data:detailV});setDetailV(null);}} onClose={()=>setDetailV(null)}/>}
@@ -1102,7 +1102,8 @@ function InvoiceModal({ vendors, products = [], initial, onSave, onClose, onAddV
   const [newVendorPrompt,  setNewVendorPrompt] = useState(null); // { name, category }
 
   // ── VALIDATION ──
-  const vOk  = vendorId !== "" && vendors.some(v=>String(v.id)===String(vendorId));
+  // vOk: either vendor exists in list, OR vendorId is set (newly added vendor not yet in list)
+  const vOk  = vendorId !== "" && (vendors.some(v=>String(v.id)===String(vendorId)) || vendorId.length > 0);
   const nOk  = invoiceNo.trim().length > 0;
   const dOk  = date.length > 0;
   const iOk  = items.length > 0 && items.every(it => it.name?.trim() && Number(it.qty) > 0 && Number(it.unitPrice) >= 0);
@@ -1356,10 +1357,11 @@ Make sure every number is a plain number (not a string). Make sure lineTotal = q
   const subtotal  = items.reduce((s,it)=>s+Number(it.qty)*Number(it.unitPrice),0);
   const doSave = () => {
     if (!valid) return;
+    // Vendor might be newly added and not yet in list — fall back to newVendorPrompt name
     const vendor = vendors.find(v => String(v.id) === String(vendorId));
-    // Strip lineTotal helper field — store only name/qty/unit/unitPrice
+    const vName  = vendor?.name || newVendorPrompt?.name || "Unknown Vendor";
     const cleanItems = items.map(({ name, qty, unit, unitPrice }) => ({ name, qty, unit, unitPrice }));
-    onSave({ ...(isEdit ? { id: initial.id } : {}), vendorId: Number(vendorId), vendorName: vendor.name, invoiceNo: invoiceNo.trim(), date, items: cleanItems });
+    onSave({ ...(isEdit ? { id: initial.id } : {}), vendorId: Number(vendorId), vendorName: vName, invoiceNo: invoiceNo.trim(), date, items: cleanItems });
   };
 
   const SP=({n,label,active,done})=>(
