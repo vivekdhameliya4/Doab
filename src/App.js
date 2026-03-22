@@ -464,7 +464,7 @@ function InventoryPage() {
         {cats.map(c=><FBtn key={c} active={catFilter===c} onClick={()=>setCatFilter(c)}>{c}</FBtn>)}
       </div>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Product","Category","Price","Cost","Stock","Min","Status",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map((p,i)=>(
@@ -615,7 +615,7 @@ function CustomersPage() {
       </div>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search customers…" style={{...S.input,maxWidth:340,marginBottom:14}}/>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Customer","Phone","Loyalty Pts","Total Spent","Visits","Joined",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map((c,i)=>(
@@ -678,7 +678,7 @@ function ExpensesPage() {
         {cats.map(c=><FBtn key={c} active={catFilter===c} onClick={()=>setCatFilter(c)}>{c}</FBtn>)}
       </div>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Description","Category","Vendor","Date","Amount","Receipt",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {[...filtered].sort((a,b)=>new Date(b.date)-new Date(a.date)).map((e,i,arr)=>(
@@ -765,7 +765,7 @@ function AttendancePage() {
         {dateFilter&&<button onClick={()=>setDateFilter("")} style={{background:"none",border:"none",color:"#3b82f6",cursor:"pointer",fontSize:12}}>Clear ×</button>}
       </div>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["Staff","Date","Clock In","Clock Out","Hours",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {[...filtered].sort((a,b)=>new Date(b.date)-new Date(a.date)||a.staffName.localeCompare(b.staffName)).map((s,i,arr)=>(
@@ -835,7 +835,7 @@ function UsersPage() {
         {["All","Admin","Manager","Cashier"].map(r=><FBtn key={r} active={filterRole===r} onClick={()=>setFilterRole(r)}>{r}</FBtn>)}
       </div>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e2e8f0"}}>{["User","Role","Status","Last Login","Actions"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map((u,i)=>(
@@ -2064,7 +2064,7 @@ function WastePage() {
         {reasons.map(r=><FBtn key={r} active={filter===r} onClick={()=>setFilter(r)}>{r}</FBtn>)}
       </div>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e5e9f0"}}>{["Date","Product","Qty","Reason","Cost","Reported By",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.sort((a,b)=>b.date.localeCompare(a.date)).map((w,i,arr)=>(
@@ -2147,7 +2147,7 @@ function PnLPage() {
         </ResponsiveContainer>
       </div>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e5e9f0"}}>{["Month","Revenue","COGS","Op Costs","Net Profit","Margin"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {pnlData.slice().reverse().map((row,i)=>{
@@ -2205,7 +2205,7 @@ function BestSellersPage() {
         </ResponsiveContainer>
       </div>
       <div style={{...S.card,overflow:"hidden",overflowX:"auto"}}>
-        <div className="table-wrap"><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr style={{borderBottom:"1px solid #e5e9f0"}}>{["Rank","Item","Category","Units Sold","Revenue","Trend"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {data.map((d,i)=>(
