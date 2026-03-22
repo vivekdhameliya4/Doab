@@ -15,53 +15,13 @@ const API_URL = (() => {
 // ─────────────────────────────────────────────────────────────────────────────
 // SEED DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const SEED_VENDORS = [
-  { id:1, name:"FreshCo Distributors", contact:"John Smith",   phone:"+1 555-1001", email:"orders@freshco.com",   category:"Groceries", status:"active",   address:"12 Market St, Newark NJ" },
-  { id:2, name:"PrimePack Supplies",   contact:"Linda Ray",    phone:"+1 555-2002", email:"linda@primepack.com",  category:"Packaging", status:"active",   address:"88 Industrial Ave, Trenton NJ" },
-  { id:3, name:"DairyDirect Co.",      contact:"Mike O'Brien", phone:"+1 555-3003", email:"mike@dairydirect.com", category:"Dairy",     status:"active",   address:"40 Farm Rd, Camden NJ" },
-];
-const SEED_INVOICES = [
-  { id:1, vendorId:1, vendorName:"FreshCo Distributors", invoiceNo:"FC-1041", date:"2026-03-01", items:[{name:"Whole Milk 1L",qty:50,unit:"bottle",unitPrice:1.20},{name:"White Bread",qty:30,unit:"loaf",unitPrice:2.50},{name:"Free Range Eggs",qty:20,unit:"dozen",unitPrice:4.80}] },
-  { id:2, vendorId:3, vendorName:"DairyDirect Co.",      invoiceNo:"DD-0891", date:"2026-03-03", items:[{name:"Whole Milk 1L",qty:60,unit:"bottle",unitPrice:1.10},{name:"Cheddar Cheese",qty:15,unit:"block",unitPrice:6.20},{name:"Greek Yogurt",qty:24,unit:"cup",unitPrice:1.80}] },
-  { id:3, vendorId:1, vendorName:"FreshCo Distributors", invoiceNo:"FC-1089", date:"2026-03-07", items:[{name:"White Bread",qty:40,unit:"loaf",unitPrice:2.40},{name:"Free Range Eggs",qty:30,unit:"dozen",unitPrice:4.60},{name:"Orange Juice 1L",qty:20,unit:"bottle",unitPrice:2.90}] },
-];
-const SEED_PRODUCTS = [
-  { id:1, name:"Whole Milk 1L",    category:"Dairy",     price:2.99, cost:1.20, stock:45,  minStock:20, unit:"bottle", barcode:"001" },
-  { id:2, name:"White Bread",      category:"Bakery",    price:3.99, cost:2.50, stock:18,  minStock:15, unit:"loaf",   barcode:"002" },
-  { id:3, name:"Free Range Eggs",  category:"Dairy",     price:6.99, cost:4.80, stock:30,  minStock:10, unit:"dozen",  barcode:"003" },
-  { id:4, name:"Cheddar Cheese",   category:"Dairy",     price:9.99, cost:6.20, stock:12,  minStock:8,  unit:"block",  barcode:"004" },
-  { id:5, name:"Orange Juice 1L",  category:"Beverages", price:4.49, cost:2.90, stock:8,   minStock:10, unit:"bottle", barcode:"005" },
-  { id:6, name:"Greek Yogurt",     category:"Dairy",     price:2.49, cost:1.80, stock:24,  minStock:12, unit:"cup",    barcode:"006" },
-  { id:7, name:"Chips Assorted",   category:"Snacks",    price:1.99, cost:0.95, stock:60,  minStock:20, unit:"bag",    barcode:"007" },
-  { id:8, name:"Bottled Water",    category:"Beverages", price:1.29, cost:0.40, stock:100, minStock:30, unit:"bottle", barcode:"008" },
-];
-const SEED_CUSTOMERS = [
-  { id:1, name:"Maria Santos",   phone:"+1 555-8001", email:"maria@email.com",  loyaltyPts:340, totalSpent:520.40, joined:"2025-01-12", visits:18 },
-  { id:2, name:"David Chen",     phone:"+1 555-8002", email:"david@email.com",  loyaltyPts:120, totalSpent:180.90, joined:"2025-06-03", visits:7  },
-  { id:3, name:"Priya Patel",    phone:"+1 555-8003", email:"priya@email.com",  loyaltyPts:560, totalSpent:890.00, joined:"2024-11-20", visits:34 },
-  { id:4, name:"James Miller",   phone:"+1 555-8004", email:"james@email.com",  loyaltyPts:80,  totalSpent:95.50,  joined:"2026-01-05", visits:4  },
-];
-const SEED_EXPENSES = [
-  { id:1, description:"Electricity Bill",    category:"Utilities",    amount:320.00, date:"2026-03-01", vendor:"NJ Power Co",     receipt:"#REC-001" },
-  { id:2, description:"Staff Uniforms",      category:"Equipment",    amount:180.00, date:"2026-03-03", vendor:"WorkWear Ltd",    receipt:"#REC-002" },
-  { id:3, description:"Internet & Phone",    category:"Utilities",    amount:89.00,  date:"2026-03-05", vendor:"TeleNet",         receipt:"#REC-003" },
-  { id:4, description:"Cleaning Supplies",   category:"Maintenance",  amount:55.50,  date:"2026-03-08", vendor:"CleanPro",        receipt:"#REC-004" },
-  { id:5, description:"Store Rent",          category:"Rent",         amount:2200.00,date:"2026-03-01", vendor:"PropMgmt LLC",    receipt:"#REC-005" },
-  { id:6, description:"POS System License",  category:"Software",     amount:49.00,  date:"2026-03-10", vendor:"RetailTech",      receipt:"#REC-006" },
-];
-const SEED_STAFF = [
-  { id:1, name:"Alex Rivera", role:"Admin",   avatar:"AR", status:"active" },
-  { id:2, name:"Sam Torres",  role:"Manager", avatar:"ST", status:"active" },
-  { id:3, name:"Jamie Lee",   role:"Cashier", avatar:"JL", status:"active" },
-  { id:4, name:"Casey Park",  role:"Cashier", avatar:"CP", status:"active" },
-];
-const SEED_SHIFTS = [
-  { id:1, staffId:1, staffName:"Alex Rivera",  date:"2026-03-10", clockIn:"08:00", clockOut:"16:00", hours:8},
-  { id:2, staffId:2, staffName:"Sam Torres",   date:"2026-03-10", clockIn:"09:00", clockOut:"17:00", hours:8},
-  { id:3, staffId:3, staffName:"Jamie Lee",    date:"2026-03-10", clockIn:"10:00", clockOut:"18:00", hours:8},
-  { id:4, staffId:4, staffName:"Casey Park",   date:"2026-03-09", clockIn:"08:30", clockOut:"15:30", hours:7},
-  { id:5, staffId:1, staffName:"Alex Rivera",  date:"2026-03-09", clockIn:"08:00", clockOut:"16:30", hours:8.5},
-];
+const SEED_VENDORS = [];
+const SEED_INVOICES = [];
+const SEED_PRODUCTS = [];
+const SEED_CUSTOMERS = [];
+const SEED_EXPENSES = [];
+const SEED_STAFF = [];
+const SEED_SHIFTS = [];
 const SALES_DATA = [
   { day:"Mon", sales:3200, orders:42 }, { day:"Tue", sales:2800, orders:36 },
   { day:"Wed", sales:4100, orders:54 }, { day:"Thu", sales:3600, orders:47 },
@@ -113,39 +73,12 @@ const NAV_GROUPS = [
 ];
 
 // ── New feature seed data ─────────────────────────────────────────────────────
-const SEED_PURCHASE_ORDERS = [
-  { id:1, poNo:"PO-2041", vendorId:1, vendorName:"FreshCo Distributors", status:"pending",   date:"2026-03-10", expectedDate:"2026-03-14", items:[{name:"Whole Milk 1L",qty:100,unit:"bottle",unitCost:1.10},{name:"White Bread",qty:60,unit:"loaf",unitCost:2.40}], total:226.00, notes:"" },
-  { id:2, poNo:"PO-2040", vendorId:3, vendorName:"DairyDirect Co.",      status:"received",  date:"2026-03-07", expectedDate:"2026-03-10", items:[{name:"Cheddar Cheese",qty:20,unit:"block",unitCost:6.00},{name:"Greek Yogurt",qty:48,unit:"cup",unitCost:1.70}], total:201.60, notes:"All items received" },
-  { id:3, poNo:"PO-2039", vendorId:2, vendorName:"PrimePack Supplies",   status:"ordered",   date:"2026-03-05", expectedDate:"2026-03-12", items:[{name:"Paper Bags 500pk",qty:5,unit:"pack",unitCost:12.00}], total:60.00, notes:"" },
-];
-const SEED_RECIPES = [
-  { id:1, name:"Classic Bagel Sandwich", category:"Sandwiches", sellingPrice:12.99, ingredients:[{productId:2,productName:"White Bread",qty:1,unit:"loaf",costPer:2.50},{productId:3,productName:"Free Range Eggs",qty:0.5,unit:"dozen",costPer:4.80},{productId:4,productName:"Cheddar Cheese",qty:0.25,unit:"block",costPer:6.20}], notes:"Served with chips" },
-  { id:2, name:"Yogurt Parfait",         category:"Breakfast",  sellingPrice:6.99,  ingredients:[{productId:6,productName:"Greek Yogurt",qty:2,unit:"cup",costPer:1.80}], notes:"Add granola and berries" },
-  { id:3, name:"Cheese Bagel",           category:"Sandwiches", sellingPrice:8.99,  ingredients:[{productId:2,productName:"White Bread",qty:1,unit:"loaf",costPer:2.50},{productId:4,productName:"Cheddar Cheese",qty:0.3,unit:"block",costPer:6.20}], notes:"" },
-];
-const SEED_CASH_SESSIONS = [
-  { id:1, date:"2026-03-10", openedBy:"Alex Rivera",  openingFloat:200.00, closingFloat:487.50, totalSales:4280.00, totalExpenses:0,    cardSales:3320.00, cashSales:960.00,  variance:0,    status:"closed",  notes:"Good day" },
-  { id:2, date:"2026-03-09", openedBy:"Sam Torres",   openingFloat:200.00, closingFloat:312.00, totalSales:3650.00, totalExpenses:55.50, cardSales:2890.00, cashSales:760.00, variance:-3.50, status:"closed",  notes:"Short $3.50" },
-  { id:3, date:"2026-03-10", openedBy:"Alex Rivera",  openingFloat:200.00, closingFloat:null,   totalSales:1240.00, totalExpenses:0,    cardSales:980.00,  cashSales:260.00,  variance:null,  status:"open",    notes:"" },
-];
-const SEED_WASTE = [
-  { id:1, date:"2026-03-10", productId:2, productName:"White Bread",    qty:3,  unit:"loaf",   reason:"Expired",    cost:7.50,  reportedBy:"Jamie Lee" },
-  { id:2, date:"2026-03-09", productId:1, productName:"Whole Milk 1L",  qty:2,  unit:"bottle", reason:"Damaged",    cost:2.40,  reportedBy:"Casey Park" },
-  { id:3, date:"2026-03-08", productId:6, productName:"Greek Yogurt",   qty:5,  unit:"cup",    reason:"Expired",    cost:9.00,  reportedBy:"Sam Torres" },
-  { id:4, date:"2026-03-07", productId:3, productName:"Free Range Eggs",qty:1,  unit:"dozen",  reason:"Broken",     cost:4.80,  reportedBy:"Jamie Lee" },
-];
-const SEED_SCHEDULES = [
-  { id:1, staffId:1, staffName:"Alex Rivera",  role:"Admin",   mon:"08:00-16:00", tue:"08:00-16:00", wed:"OFF",          thu:"08:00-16:00", fri:"08:00-16:00", sat:"OFF",          sun:"OFF"          },
-  { id:2, staffId:2, staffName:"Sam Torres",   role:"Manager", mon:"09:00-17:00", tue:"09:00-17:00", wed:"09:00-17:00",  thu:"OFF",          fri:"09:00-17:00", sat:"10:00-15:00",  sun:"OFF"          },
-  { id:3, staffId:3, staffName:"Jamie Lee",    role:"Cashier", mon:"10:00-18:00", tue:"OFF",          wed:"10:00-18:00",  thu:"10:00-18:00", fri:"10:00-18:00", sat:"10:00-18:00",  sun:"OFF"          },
-  { id:4, staffId:4, staffName:"Casey Park",   role:"Cashier", mon:"OFF",          tue:"10:00-18:00",  wed:"10:00-18:00",  thu:"10:00-18:00", fri:"OFF",          sat:"10:00-18:00",  sun:"10:00-15:00"  },
-];
-const SEED_PAYROLL = [
-  { staffId:1, staffName:"Alex Rivera",  role:"Admin",   hourlyRate:22.00, hoursThisWeek:40, overtimeHours:0  },
-  { staffId:2, staffName:"Sam Torres",   role:"Manager", hourlyRate:18.00, hoursThisWeek:42, overtimeHours:2  },
-  { staffId:3, staffName:"Jamie Lee",    role:"Cashier", hourlyRate:15.00, hoursThisWeek:38, overtimeHours:0  },
-  { staffId:4, staffName:"Casey Park",   role:"Cashier", hourlyRate:15.00, hoursThisWeek:35, overtimeHours:0  },
-];
+const SEED_PURCHASE_ORDERS = [];
+const SEED_RECIPES = [];
+const SEED_CASH_SESSIONS = [];
+const SEED_WASTE = [];
+const SEED_SCHEDULES = [];
+const SEED_PAYROLL = [];
 const SEED_CHECKLIST = {
   opening:[
     {id:1,task:"Unlock doors and disable alarm",category:"Security"},
