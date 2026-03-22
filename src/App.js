@@ -1,5 +1,10 @@
 import { useState, useEffect, createContext, useContext, useMemo } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import {
+  useVendors, useInvoices, useProducts, useCustomers,
+  useExpenses, usePOs, useRecipes, useWaste, useCash,
+  useShifts, useSchedules, LoadingScreen, DbError, HAS_SUPABASE,
+} from "./hooks";
 
 // ── API endpoint — proxy server for production, direct for dev ────────────────
 // Always use relative path — React proxy forwards to server.js (no CORS issues)
@@ -104,12 +109,6 @@ const SEED_CHECKLIST = {
 const WASTE_REASONS = ["Expired","Damaged","Over-prep","Dropped","Wrong order","Other"];
 const PO_STATUS_COLORS = { pending:{bg:"#fef3c7",text:"#92400e"}, ordered:{bg:"#dbeafe",text:"#1e40af"}, received:{bg:"#d1fae5",text:"#065f46"}, cancelled:{bg:"#fee2e2",text:"#991b1b"} };
 
-import {
-  useVendors, useInvoices, useProducts, useCustomers,
-  useExpenses, usePOs, useRecipes, useWaste, useCash,
-  useShifts, useSchedules, LoadingScreen, DbError,
-} from "./hooks";
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH
 // ─────────────────────────────────────────────────────────────────────────────
@@ -206,6 +205,9 @@ function Sidebar({ active, setActive }) {
       <div style={{padding:"10px 8px",borderTop:"1px solid rgba(255,255,255,0.1)"}}>
         {user&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,padding:"7px 8px",background:"rgba(255,255,255,0.1)",borderRadius:9}}><Avatar initials={user.avatar} size={28}/><div><div style={{color:"#374151",fontSize:12,fontWeight:600}}>{user.name}</div><div style={{color:"#3b82f6",fontSize:10,fontWeight:600}}>{user.role}</div></div></div>}
         <button onClick={logout} style={{width:"100%",background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:7,padding:"7px",color:"#f87171",fontSize:12,cursor:"pointer",fontWeight:600}}>Sign Out</button>
+        <div style={{marginTop:8,padding:"5px 8px",borderRadius:6,background:HAS_SUPABASE?"rgba(16,185,129,0.15)":"rgba(245,158,11,0.15)",border:`1px solid ${HAS_SUPABASE?"rgba(16,185,129,0.3)":"rgba(245,158,11,0.3)"}`,textAlign:"center",fontSize:10,fontWeight:700,color:HAS_SUPABASE?"#10b981":"#f59e0b"}}>
+          {HAS_SUPABASE?"🟢 Supabase Connected":"🟡 Local Only (no DB)"}
+        </div>
       </div>
     </aside>
   );
@@ -758,7 +760,7 @@ function UsersPage() {
 // VENDORS MODULE  (full rewrite — validation fixed, PDF support, edit mode)
 // ─────────────────────────────────────────────────────────────────────────────
 function VendorsPage() {
-  const { data:vendors,  save:saveVendorDb  } = useVendors();
+  const { data:vendors, save:saveVendorDb, loading:vLoading, error:vError } = useVendors();
   const { data:invoices, save:saveInvoiceDb } = useInvoices();
   const [tab,      setTab]       = useState("vendors");
   const [vModal,   setVModal]    = useState(null);
@@ -769,6 +771,9 @@ function VendorsPage() {
   const saveInvoice = async iv => { await saveInvoiceDb(iv); setIModal(null); };
 
   const TABS=[{key:"vendors",label:"Vendors",icon:"🏭"},{key:"invoices",label:"Invoices",icon:"🧾"},{key:"prices",label:"Price Tracker",icon:"📈"}];
+
+  if (vLoading) return <LoadingScreen/>;
+  if (vError) return <DbError message={vError}/>;
 
   return (
     <div>
