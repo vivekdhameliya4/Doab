@@ -212,19 +212,33 @@ const saveStoredUsers = (users) => {
   try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch(e) {}
 };
 
-const getSession = () => {
-  try {
-    const s = localStorage.getItem(SESSION_KEY);
-    return s ? JSON.parse(s) : null;
-  } catch(e) { return null; }
-};
+
+
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 const saveSession = (user) => {
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch(e) {}
+  try {
+    const data = { ...user, _savedAt: Date.now() };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  } catch(e) {}
 };
 
 const clearSession = () => {
   try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+};
+
+const getSession = () => {
+  try {
+    const s = localStorage.getItem(SESSION_KEY);
+    if (!s) return null;
+    const data = JSON.parse(s);
+    // Check if session expired (15 min)
+    if (Date.now() - (data._savedAt || 0) > SESSION_TIMEOUT_MS) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return data;
+  } catch(e) { return null; }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -316,7 +330,7 @@ function Sidebar({ active, setActive }) {
       </nav>
       <div style={{padding:"10px 8px",borderTop:"1px solid rgba(255,255,255,0.1)"}}>
         {user&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,padding:"7px 8px",background:"rgba(255,255,255,0.1)",borderRadius:9}}><Avatar initials={user.avatar} size={28}/><div><div style={{color:"#374151",fontSize:12,fontWeight:600}}>{user.name}</div><div style={{color:"#3b82f6",fontSize:10,fontWeight:600}}>{user.role}</div></div></div>}
-        <button onClick={logout} style={{width:"100%",background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:7,padding:"7px",color:"#f87171",fontSize:12,cursor:"pointer",fontWeight:600}}>Sign Out</button>
+        <button onClick={logout} style={{width:"100%",background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:9,padding:"9px",color:"#f87171",fontSize:13,cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🚪 Sign Out</button>
         <div style={{marginTop:8,padding:"5px 8px",borderRadius:6,background:HAS_SUPABASE?"rgba(16,185,129,0.15)":"rgba(245,158,11,0.15)",border:`1px solid ${HAS_SUPABASE?"rgba(16,185,129,0.3)":"rgba(245,158,11,0.3)"}`,textAlign:"center",fontSize:10,fontWeight:700,color:HAS_SUPABASE?"#10b981":"#f59e0b"}}>
           {HAS_SUPABASE?"🟢 Supabase Connected":"🟡 Local Only (no DB)"}
         </div>
@@ -2064,11 +2078,7 @@ function Login() {
           <button onClick={submit} disabled={loading} style={{width:"100%",background:loading?"#93c5fd":"linear-gradient(135deg,#1e3a8a,#3b82f6)",border:"none",borderRadius:12,padding:"13px",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 20px rgba(59,130,246,0.3)",letterSpacing:"0.3px"}}>
             {loading?"Signing in…":"Sign In →"}
           </button>
-          <div style={{marginTop:20,padding:"12px 14px",background:"#f8fafc",borderRadius:10,border:"1px solid #e5e9f0"}}>
-            <div style={{color:"#374151",fontSize:11,fontWeight:700,marginBottom:4}}>DEFAULT CREDENTIALS</div>
-            <div style={{color:"#6b7280",fontSize:12,fontFamily:"monospace"}}>Username: <strong style={{color:"#374151"}}>admin</strong> · Password: <strong style={{color:"#374151"}}>admin123</strong></div>
-            <div style={{color:"#9ca3af",fontSize:11,marginTop:4}}>Change these in User Management after logging in.</div>
-          </div>
+
         </div>
       </div>
     </div>
@@ -3233,6 +3243,27 @@ export default function App() {
   const [user,setUser]=useState(()=>getSession());
   const login = (u) => { saveSession(u); setUser(u); };
   const logout = () => { clearSession(); setUser(null); };
+
+  // Refresh session timer on any click/key (reset 15-min countdown)
+  useEffect(() => {
+    if (!user) return;
+    const refresh = () => { if (getSession()) saveSession(user); };
+    window.addEventListener('click', refresh);
+    window.addEventListener('keydown', refresh);
+    // Check session every minute
+    const interval = setInterval(() => {
+      if (!getSession()) {
+        setUser(null);
+        alert('Your session has expired after 15 minutes of inactivity. Please sign in again.');
+      }
+    }, 60000);
+    return () => {
+      window.removeEventListener('click', refresh);
+      window.removeEventListener('keydown', refresh);
+      clearInterval(interval);
+    };
+  }, [user]);
+
   return (
     <AuthCtx.Provider value={{user,login,logout}}>
       <style>{`
