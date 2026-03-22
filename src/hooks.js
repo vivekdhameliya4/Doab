@@ -1,47 +1,27 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// ── Supabase setup ─────────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+
 export const HAS_SUPABASE = !!(
   SUPABASE_URL &&
   SUPABASE_KEY &&
+  SUPABASE_URL.startsWith('https://') &&
   SUPABASE_URL.includes('supabase.co') &&
-  SUPABASE_KEY.length > 20
+  SUPABASE_KEY.startsWith('eyJ')
 );
 
-const db = HAS_SUPABASE ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-
-// ── Generic CRUD ───────────────────────────────────────────────────────────
-async function dbGetAll(table, mapper) {
-  if (!db) return null;
-  const { data, error } = await db.from(table).select('*').order('id');
-  if (error) { console.error(table, error.message); throw error; }
-  return mapper ? data.map(mapper) : data;
+let db = null;
+try {
+  if (HAS_SUPABASE) {
+    db = createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+} catch(e) {
+  console.warn('Supabase init failed:', e.message);
 }
 
-async function dbInsert(table, payload, fromDb) {
-  if (!db) return null;
-  const { data, error } = await db.from(table).insert([payload]).select().single();
-  if (error) { console.error(table, error.message); throw error; }
-  return fromDb ? fromDb(data) : data;
-}
-
-async function dbUpdate(table, id, payload, fromDb) {
-  if (!db) return null;
-  const { data, error } = await db.from(table).update(payload).eq('id', id).select().single();
-  if (error) { console.error(table, error.message); throw error; }
-  return fromDb ? fromDb(data) : data;
-}
-
-async function dbDelete(table, id) {
-  if (!db) return;
-  const { error } = await db.from(table).delete().eq('id', id);
-  if (error) { console.error(table, error.message); throw error; }
-}
-
-// ── Field mappers ──────────────────────────────────────────────────────────
+// Field mappers
 const vendorFromDb   = v => ({ id:v.id, name:v.name, contact:v.contact||'', phone:v.phone||'', email:v.email||'', address:v.address||'', category:v.category||'Other', status:v.status||'active' });
 const vendorToDb     = v => ({ name:v.name, contact:v.contact||'', phone:v.phone||'', email:v.email||'', address:v.address||'', category:v.category||'Other', status:v.status||'active' });
 const invoiceFromDb  = i => ({ id:i.id, vendorId:i.vendor_id, vendorName:i.vendor_name, invoiceNo:i.invoice_no, date:i.date, items:i.items||[] });
@@ -63,43 +43,44 @@ const cashToDb       = s => ({ date:s.date, opened_by:s.openedBy||'Admin', openi
 const shiftFromDb    = s => ({ id:s.id, staffName:s.staff_name, role:s.role||'Cashier', date:s.date, clockIn:s.clock_in, clockOut:s.clock_out, hours:Number(s.hours||0) });
 const shiftToDb      = s => ({ staff_name:s.staffName||'', role:s.role||'Cashier', date:s.date, clock_in:s.clockIn||'09:00', clock_out:s.clockOut||'17:00', hours:s.hours||0 });
 
-// ── Generic hook factory ───────────────────────────────────────────────────
-function makeHook(table, fromDb, toDb, seed = []) {
+function makeHook(table, fromDb, toDb) {
   return function useTable() {
-    const [data, setData]       = useState([...seed]);
-    const [loading, setLoading] = useState(HAS_SUPABASE);
+    const [data, setData]       = useState([]);
+    const [loading, setLoading] = useState(true);
     const [error, setError]     = useState(null);
 
     useEffect(() => {
-      if (!HAS_SUPABASE) return;
-      dbGetAll(table, fromDb)
-        .then(rows => { if (rows) setData(rows); })
-        .catch(e  => { setError(e.message); console.error('Load error:', e); })
-        .finally(()=> setLoading(false));
-    }, []);  // eslint-disable-line
+      if (!db) { setLoading(false); return; }
+      db.from(table).select('*').order('id')
+        .then(({ data: rows, error: err }) => {
+          if (err) { setError(err.message); }
+          else { setData(fromDb ? rows.map(fromDb) : rows); }
+        })
+        .catch(e => setError(e.message))
+        .finally(() => setLoading(false));
+    }, []); // eslint-disable-line
 
     const save = async (item) => {
       try {
-        let saved;
+        let row;
         if (item.id) {
-          // Update
-          saved = HAS_SUPABASE
-            ? await dbUpdate(table, item.id, toDb ? toDb(item) : item, fromDb)
-            : { ...item };
-          setData(d => d.map(x => x.id === item.id ? (saved || item) : x));
+          const res = await db.from(table).update(toDb ? toDb(item) : item).eq('id', item.id).select().single();
+          if (res.error) throw res.error;
+          row = fromDb ? fromDb(res.data) : res.data;
+          setData(d => d.map(x => x.id === item.id ? row : x));
         } else {
-          // Create
-          saved = HAS_SUPABASE
-            ? await dbInsert(table, toDb ? toDb(item) : item, fromDb)
-            : { ...item, id: Date.now() };
-          setData(d => [...d, saved || { ...item, id: Date.now() }]);
+          const res = await db.from(table).insert([toDb ? toDb(item) : item]).select().single();
+          if (res.error) throw res.error;
+          row = fromDb ? fromDb(res.data) : res.data;
+          setData(d => [...d, row]);
         }
-        return saved || item;
+        return row;
       } catch(e) {
         setError(e.message);
-        // Still update local state so UI doesn't break
+        // fallback local
         if (item.id) {
           setData(d => d.map(x => x.id === item.id ? item : x));
+          return item;
         } else {
           const local = { ...item, id: Date.now() };
           setData(d => [...d, local]);
@@ -115,18 +96,18 @@ function makeHook(table, fromDb, toDb, seed = []) {
 
     const remove = async (id) => {
       try {
-        if (HAS_SUPABASE) await dbDelete(table, id);
+        if (db) {
+          const res = await db.from(table).delete().eq('id', id);
+          if (res.error) throw res.error;
+        }
         setData(d => d.filter(x => x.id !== id));
       } catch(e) { setError(e.message); }
     };
 
-    const create = (item) => save(item);
-
-    return { data, loading, error, save, update, remove, create };
+    return { data, loading, error, save, update, remove, create: save };
   };
 }
 
-// ── Hooks ──────────────────────────────────────────────────────────────────
 export const useVendors   = makeHook('vendors',         vendorFromDb,  vendorToDb);
 export const useInvoices  = makeHook('invoices',        invoiceFromDb, invoiceToDb);
 export const useProducts  = makeHook('products',        productFromDb, productToDb);
@@ -140,22 +121,25 @@ export const useShifts    = makeHook('shifts',          shiftFromDb,   shiftToDb
 
 export function useSchedules() {
   const [data, setData]       = useState([]);
-  const [loading, setLoading] = useState(HAS_SUPABASE);
+  const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
   useEffect(() => {
-    if (!HAS_SUPABASE) return;
-    dbGetAll('schedules', x => x)
-      .then(rows => { if (rows) setData(rows); })
+    if (!db) { setLoading(false); return; }
+    db.from('schedules').select('*').order('id')
+      .then(({ data: rows, error: err }) => {
+        if (err) setError(err.message);
+        else setData(rows || []);
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line
 
   const upsert = async (s) => {
-    if (!db) { setData(d => d.find(x=>x.staffId===s.staffId) ? d.map(x=>x.staffId===s.staffId?{...x,...s}:x) : [...d,s]); return; }
+    if (!db) return;
     try {
-      const { data: row, error } = await db.from('schedules').upsert([s], { onConflict: 'staff_name' }).select().single();
-      if (error) throw error;
+      const { data: row, error: err } = await db.from('schedules').upsert([s], { onConflict: 'staff_name' }).select().single();
+      if (err) throw err;
       setData(d => d.find(x=>x.id===row.id) ? d.map(x=>x.id===row.id?row:x) : [...d,row]);
     } catch(e) { setError(e.message); }
   };
@@ -163,23 +147,22 @@ export function useSchedules() {
   return { data, loading, error, upsert };
 }
 
-// ── UI helpers ─────────────────────────────────────────────────────────────
 export function LoadingScreen() {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',flexDirection:'column',gap:16}}>
       <div style={{width:36,height:36,border:'3px solid #e5e9f0',borderTopColor:'#3b82f6',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
-      <div style={{color:'#6b7280',fontSize:14}}>Loading…</div>
+      <div style={{color:'#6b7280',fontSize:14}}>Loading from database…</div>
     </div>
   );
 }
 
 export function DbError({ message }) {
   return (
-    <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,padding:'14px 18px',marginBottom:20,display:'flex',gap:10}}>
-      <span>⚠️</span>
+    <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,padding:'14px 18px',marginBottom:20,display:'flex',gap:10,alignItems:'flex-start'}}>
+      <span style={{fontSize:20}}>⚠️</span>
       <div>
         <div style={{color:'#dc2626',fontWeight:700,fontSize:13}}>Database error</div>
-        <div style={{color:'#9ca3af',fontSize:12,marginTop:4}}>{message}</div>
+        <div style={{color:'#ef4444',fontSize:12,marginTop:4}}>{message}</div>
       </div>
     </div>
   );
