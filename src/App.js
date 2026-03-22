@@ -353,7 +353,7 @@ const Spinner = () => (
 function Sidebar({ active, setActive }) {
   const { user, logout } = useAuth();
   return (
-    <aside style={{width:228,background:"#1e3a8a",borderRight:"1px solid rgba(255,255,255,0.1)",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
+    <aside style={{width:228,background:"#1e3a8a",borderRight:"1px solid rgba(255,255,255,0.1)",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto",height:"100%",minHeight:"100vh",WebkitOverflowScrolling:"touch"}}>
       <div style={{padding:"18px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",gap:10}}>
         <div style={{width:34,height:34,background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 4px 12px rgba(59,130,246,0.3)"}}>🏪</div>
         <div><div style={{color:"#ffffff",fontWeight:800,fontSize:14}}>Deli On A Bagel Cafe</div><div style={{color:"#374151",fontSize:10,letterSpacing:"0.5px"}}>CAFE & DELI</div></div>
@@ -1251,13 +1251,36 @@ function ChangePasswordModal({ user, onSave, onClose }) {
 function VendorsPage() {
   const { data:vendors, save:saveVendorDb, loading:vLoading, error:vError } = useVendors();
   const { data:invoices, save:saveInvoiceDb } = useInvoices();
+  const { data:products, save:saveProduct } = useProducts();
   const [tab,      setTab]       = useState("vendors");
   const [vModal,   setVModal]    = useState(null);
   const [iModal,   setIModal]    = useState(null);
   const [detailV,  setDetailV]   = useState(null);
 
   const saveVendor  = async v  => { await saveVendorDb(v);  setVModal(null); setDetailV(null); };
-  const saveInvoice = async iv => { await saveInvoiceDb(iv); setIModal(null); };
+  const saveInvoice = async iv => {
+    await saveInvoiceDb(iv);
+    // Auto-add new items to inventory, update cost price for existing items
+    for (const item of (iv.items || [])) {
+      const name = item.name?.trim();
+      if (!name) continue;
+      const existing = products.find(p => p.name.toLowerCase() === name.toLowerCase());
+      if (!existing) {
+        // New item — add to inventory with cost from invoice
+        await saveProduct({
+          name, category:"Other", price: Number(item.unitPrice)*1.4 || 0,
+          cost: Number(item.unitPrice) || 0, stock:0, minStock:5,
+          unit: item.unit||"unit", barcode:"",
+        });
+      } else {
+        // Existing item — update cost price if different
+        if (Number(existing.cost) !== Number(item.unitPrice) && Number(item.unitPrice) > 0) {
+          await saveProduct({ ...existing, cost: Number(item.unitPrice) });
+        }
+      }
+    }
+    setIModal(null);
+  };
 
   const TABS=[{key:"vendors",label:"Vendors",icon:"🏭"},{key:"invoices",label:"Invoices",icon:"🧾"},{key:"prices",label:"Price Tracker",icon:"📈"}];
 
@@ -1275,7 +1298,7 @@ function VendorsPage() {
       {tab==="invoices" && <InvoiceList invoices={invoices} vendors={vendors} onEdit={iv=>setIModal({mode:"edit",data:iv})}/>}
       {tab==="prices"   && <PriceTracker invoices={invoices}/>}
       {vModal  && <VendorModal  initial={vModal.data}  onSave={saveVendor}  onClose={()=>setVModal(null)} existingVendors={vendors}/>}
-      {iModal  && <InvoiceModal vendors={vendors} products={SEED_PRODUCTS} allInvoices={invoices} initial={iModal.data} onSave={saveInvoice} onClose={()=>setIModal(null)}
+      {iModal  && <InvoiceModal vendors={vendors} products={products} allInvoices={invoices} initial={iModal.data} onSave={saveInvoice} onClose={()=>setIModal(null)}
       onAddVendor={async (v,cb)=>{
         const saved = await saveVendorDb({...v,status:"active"});
         const newId = saved?.id || Date.now();
@@ -1488,7 +1511,21 @@ function VendorDetail({ vendor:v, invoices, onEdit, onClose }) {
 }
 
 // ── Item Name Input with product autocomplete ─────────────────────────────
-function ItemNameInput({ value, products, onChange, onSelect, hasError }) {
+function ItemNameInput({ value, products, onChange, onSelect, hasError, allInvoices }) {
+  // Build price history per item name from all invoices
+  const priceHistory = useMemo(() => {
+    const map = {};
+    (allInvoices||[]).forEach(inv => {
+      (inv.items||[]).forEach(it => {
+        const n = it.name?.trim().toLowerCase();
+        if (!n || !it.unitPrice) return;
+        if (!map[n]) map[n] = [];
+        map[n].push({ price: Number(it.unitPrice), date: inv.date, vendor: inv.vendorName });
+      });
+    });
+    return map;
+  }, [allInvoices]);
+
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
 
@@ -1539,10 +1576,17 @@ function ItemNameInput({ value, products, onChange, onSelect, hasError }) {
               <div>
                 <div style={{color:"#111827", fontSize:12, fontWeight:600}}>{p.name}</div>
                 <div style={{color:"#9ca3af", fontSize:11}}>{p.category} · {p.unit}</div>
+                {/* Show price history */}
+                {priceHistory[p.name.toLowerCase()] && (
+                  <div style={{color:"#6b7280",fontSize:10,marginTop:2}}>
+                    Last price: <strong style={{color:"#f59e0b"}}>${priceHistory[p.name.toLowerCase()].sort((a,b)=>b.date.localeCompare(a.date))[0].price.toFixed(2)}</strong>
+                    {" "}· {priceHistory[p.name.toLowerCase()].sort((a,b)=>b.date.localeCompare(a.date))[0].date}
+                  </div>
+                )}
               </div>
               <div style={{textAlign:"right", flexShrink:0}}>
                 <div style={{color:"#6b7280", fontSize:11}}>cost</div>
-                <div style={{color:"#10b981", fontSize:12, fontWeight:700}}>${p.cost.toFixed(2)}</div>
+                <div style={{color:"#10b981", fontSize:12, fontWeight:700}}>${Number(p.cost||0).toFixed(2)}</div>
               </div>
             </div>
           ))}
@@ -1985,6 +2029,7 @@ Make sure every number is a plain number (not a string). Make sure lineTotal = q
                     <tr key={i} style={{background:mismatch?"#fffbeb":i%2===0?"#fff":"#fafbfc",borderBottom:"1px solid #e5e9f0"}}>
                       <td style={{padding:"5px 8px",verticalAlign:"top"}}>
                         <ItemNameInput value={it.name} products={products}
+                          allInvoices={allInvoices}
                           onChange={name=>upd(i,"name",name)}
                           onSelect={p=>setItems(is=>is.map((item,idx)=>idx===i?{...item,name:p.name,unit:p.unit,unitPrice:p.cost,lineTotal:parseFloat((item.qty*p.cost).toFixed(2))}:item))}
                           hasError={!it.name?.trim()}/>
@@ -3260,6 +3305,9 @@ function Dashboard() {
           transform:sidebarOpen?"translateX(0)":"translateX(-100%)",
           transition:"transform 0.25s ease",
           display:"none",
+          overflowY:"auto",
+          WebkitOverflowScrolling:"touch",
+          width:260,
         }}
       >
         <Sidebar active={tab} setActive={t=>{setTab(t);setSidebarOpen(false);}}/>
