@@ -191,25 +191,66 @@ const PO_STATUS_COLORS = { pending:{bg:"#fef3c7",text:"#92400e"}, ordered:{bg:"#
 const AuthCtx = createContext(null);
 const useAuth = () => useContext(AuthCtx);
 
-// Default admin account stored in localStorage
-const USERS_KEY = "doab_users";
+// Session stored in localStorage, users stored in Supabase
 const SESSION_KEY = "doab_session";
 
-const getStoredUsers = () => {
-  try {
-    const stored = localStorage.getItem(USERS_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch(e) {}
-  // Default admin
-  const defaults = [
-    { id:1, name:"Admin", username:"admin", password:"admin123", role:"Admin", status:"active", avatar:"AD", email:"admin@doab.com", createdAt: new Date().toISOString() }
-  ];
-  localStorage.setItem(USERS_KEY, JSON.stringify(defaults));
-  return defaults;
+// Supabase user operations
+const sbUsers = {
+  getAll: async () => {
+    if (!window._sbClient) return [];
+    const { data, error } = await window._sbClient.from('app_users').select('*').order('id');
+    if (error) { console.error('Users fetch error:', error); return []; }
+    return data || [];
+  },
+  findByCredentials: async (username, password) => {
+    if (!window._sbClient) return null;
+    const { data, error } = await window._sbClient
+      .from('app_users')
+      .select('*')
+      .eq('username', username.toLowerCase().trim())
+      .eq('password', password)
+      .eq('status', 'active')
+      .single();
+    if (error || !data) return null;
+    return data;
+  },
+  create: async (user) => {
+    if (!window._sbClient) return null;
+    const { data, error } = await window._sbClient
+      .from('app_users')
+      .insert([{ name:user.name, username:user.username.toLowerCase().trim(), password:user.password, email:user.email||'', role:user.role||'Cashier', status:user.status||'active', avatar:user.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() }])
+      .select().single();
+    if (error) { throw error; }
+    return data;
+  },
+  update: async (id, patch) => {
+    if (!window._sbClient) return null;
+    const { data, error } = await window._sbClient
+      .from('app_users').update(patch).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+  delete: async (id) => {
+    if (!window._sbClient) return;
+    const { error } = await window._sbClient.from('app_users').delete().eq('id', id);
+    if (error) throw error;
+  },
+  updateLastLogin: async (id) => {
+    if (!window._sbClient) return;
+    await window._sbClient.from('app_users').update({ last_login: new Date().toISOString() }).eq('id', id);
+  },
 };
 
+// Legacy localStorage fallback (used when Supabase not available)
+const getStoredUsers = () => {
+  try {
+    const stored = localStorage.getItem('doab_users_local');
+    if (stored) return JSON.parse(stored);
+  } catch(e) {}
+  return [{ id:1, name:"Admin", username:"admin", password:"admin123", role:"Admin", status:"active", avatar:"AD", email:"admin@doab.com" }];
+};
 const saveStoredUsers = (users) => {
-  try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch(e) {}
+  try { localStorage.setItem('doab_users_local', JSON.stringify(users)); } catch(e) {}
 };
 
 
@@ -970,41 +1011,86 @@ function ShiftModal({ initial, onSave, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function UsersPage() {
   const { user:currentUser } = useAuth();
-  const [users, setUsers] = useState(getStoredUsers());
-  const [modal, setModal] = useState(null); // {mode:"add"|"edit"|"password", data?}
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("All");
 
-  const saveUsers = (updated) => { setUsers(updated); saveStoredUsers(updated); };
+  useEffect(() => {
+    if (window._sbClient) {
+      sbUsers.getAll().then(rows => { setUsers(rows); setUsersLoading(false); });
+    } else {
+      setUsers(getStoredUsers()); setUsersLoading(false);
+    }
+  }, []);
 
-  const addUser = (u) => {
+  const addUser = async (u) => {
     const exists = users.some(x => x.username.toLowerCase() === u.username.toLowerCase());
     if (exists) { alert("Username already exists."); return; }
-    const newUser = { ...u, id: Date.now(), avatar: u.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(), createdAt: new Date().toISOString(), lastLogin: "Never" };
-    saveUsers([...users, newUser]);
-    setModal(null);
+    try {
+      if (window._sbClient) {
+        const saved = await sbUsers.create(u);
+        setUsers(us => [...us, saved]);
+      } else {
+        const newUser = { ...u, id:Date.now(), avatar:u.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase() };
+        const updated = [...users, newUser];
+        setUsers(updated); saveStoredUsers(updated);
+      }
+      setModal(null);
+    } catch(e) { alert("Error: " + e.message); }
   };
 
-  const editUser = (u) => {
-    saveUsers(users.map(x => x.id === u.id ? { ...x, ...u } : x));
-    setModal(null);
+  const editUser = async (u) => {
+    try {
+      if (window._sbClient) {
+        const saved = await sbUsers.update(u.id, { name:u.name, email:u.email, role:u.role, status:u.status });
+        setUsers(us => us.map(x => x.id === u.id ? saved : x));
+      } else {
+        const updated = users.map(x => x.id === u.id ? { ...x, ...u } : x);
+        setUsers(updated); saveStoredUsers(updated);
+      }
+      setModal(null);
+    } catch(e) { alert("Error: " + e.message); }
   };
 
-  const changePassword = (id, newPass) => {
-    saveUsers(users.map(x => x.id === id ? { ...x, password: newPass } : x));
-    setModal(null);
+  const changePassword = async (id, newPass) => {
+    try {
+      if (window._sbClient) {
+        await sbUsers.update(id, { password: newPass });
+      } else {
+        const updated = users.map(x => x.id === id ? { ...x, password: newPass } : x);
+        setUsers(updated); saveStoredUsers(updated);
+      }
+      setUsers(us => us.map(x => x.id === id ? { ...x, password: newPass } : x));
+      setModal(null);
+    } catch(e) { alert("Error: " + e.message); }
   };
 
-  const toggle = (id) => {
+  const toggle = async (id) => {
     if (id === currentUser?.id) { alert("You cannot deactivate your own account."); return; }
-    saveUsers(users.map(u => u.id === id ? { ...u, status: u.status === "active" ? "inactive" : "active" } : u));
+    const u = users.find(x => x.id === id);
+    const newStatus = u?.status === "active" ? "inactive" : "active";
+    try {
+      if (window._sbClient) await sbUsers.update(id, { status: newStatus });
+      const updated = users.map(x => x.id === id ? { ...x, status: newStatus } : x);
+      setUsers(updated);
+      if (!window._sbClient) saveStoredUsers(updated);
+    } catch(e) { alert("Error: " + e.message); }
   };
 
-  const deleteUser = (id) => {
+  const deleteUser = async (id) => {
     if (id === currentUser?.id) { alert("You cannot delete your own account."); return; }
     if (!window.confirm("Delete this user? This cannot be undone.")) return;
-    saveUsers(users.filter(u => u.id !== id));
+    try {
+      if (window._sbClient) await sbUsers.delete(id);
+      const updated = users.filter(u => u.id !== id);
+      setUsers(updated);
+      if (!window._sbClient) saveStoredUsers(updated);
+    } catch(e) { alert("Error: " + e.message); }
   };
+
+  if (usersLoading) return <LoadingScreen/>;
 
   const filtered = users.filter(u =>
     (filterRole === "All" || u.role === filterRole) &&
@@ -2033,26 +2119,34 @@ function Login() {
   const [err,setErr]=useState(""); const [loading,setL]=useState(false);
   const [show,setShow]=useState(false);
 
-  const submit=()=>{
+  const submit=async ()=>{
     setErr("");
     if(!u||!p) return setErr("Please enter username and password.");
     setL(true);
-    setTimeout(()=>{
-      const users = getStoredUsers();
-      const found = users.find(usr =>
-        usr.username.toLowerCase()===u.toLowerCase() &&
-        usr.password===p &&
-        usr.status==="active"
-      );
-      if(found){
-        const session = {id:found.id,name:found.name,role:found.role,avatar:found.avatar,email:found.email,username:found.username};
+    try {
+      let found = null;
+      // Try Supabase first
+      if (window._sbClient) {
+        found = await sbUsers.findByCredentials(u, p);
+      }
+      // Fallback to localStorage
+      if (!found) {
+        const users = getStoredUsers();
+        found = users.find(usr => usr.username.toLowerCase()===u.toLowerCase() && usr.password===p && usr.status==="active");
+      }
+      if (found) {
+        if (found.id && window._sbClient) sbUsers.updateLastLogin(found.id);
+        const session = {id:found.id, name:found.name, role:found.role, avatar:found.avatar||found.name?.slice(0,2)||'??', email:found.email, username:found.username};
         saveSession(session);
         login(session);
       } else {
         setErr("Invalid username or password.");
         setL(false);
       }
-    },600);
+    } catch(e) {
+      setErr("Login error: " + e.message);
+      setL(false);
+    }
   };
 
   return (
@@ -3243,6 +3337,17 @@ export default function App() {
   const [user,setUser]=useState(()=>getSession());
   const login = (u) => { saveSession(u); setUser(u); };
   const logout = () => { clearSession(); setUser(null); };
+
+  // Initialize Supabase client on window for user auth
+  useEffect(() => {
+    const url = process.env.REACT_APP_SUPABASE_URL || '';
+    const key = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+    if (url && key && url.includes('supabase.co')) {
+      import('@supabase/supabase-js').then(({ createClient }) => {
+        window._sbClient = createClient(url, key);
+      }).catch(() => {});
+    }
+  }, []);
 
   // Refresh session timer on any click/key (reset 15-min countdown)
   useEffect(() => {
