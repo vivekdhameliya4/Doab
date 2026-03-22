@@ -1,4 +1,4 @@
-import { useState, createContext, useContext, useMemo } from "react";
+import { useState, useEffect, createContext, useContext, useMemo } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 // ── API endpoint — proxy server for production, direct for dev ────────────────
@@ -104,44 +104,11 @@ const SEED_CHECKLIST = {
 const WASTE_REASONS = ["Expired","Damaged","Over-prep","Dropped","Wrong order","Other"];
 const PO_STATUS_COLORS = { pending:{bg:"#fef3c7",text:"#92400e"}, ordered:{bg:"#dbeafe",text:"#1e40af"}, received:{bg:"#d1fae5",text:"#065f46"}, cancelled:{bg:"#fee2e2",text:"#991b1b"} };
 
-// ── Inline hooks (artifact-compatible — uses local state + seed data) ──────────
-// ── Local-state hooks (used when Supabase not configured) ──────────────────
-function makeHook(seedData) {
-  return function useTable() {
-    const [data, setData] = useState(seedData ? [...seedData] : []);
-    const create = (item) => { const n={...item,id:Date.now()}; setData(d=>[...d,n]); return n; };
-    const update = (id, item) => { setData(d=>d.map(x=>x.id===id?{...x,...item}:x)); return item; };
-    const remove = (id)       => { setData(d=>d.filter(x=>x.id!==id)); };
-    const save   = (item)     => { if(item.id){return update(item.id,item);}else{return create(item);} };
-    return { data, loading:false, error:null, create, update, remove, save };
-  };
-}
-const useVendors   = makeHook(SEED_VENDORS);
-const useInvoices  = makeHook(SEED_INVOICES);
-const useProducts  = makeHook(SEED_PRODUCTS);
-const useCustomers = makeHook(SEED_CUSTOMERS);
-const useExpenses  = makeHook(SEED_EXPENSES);
-const usePOs       = makeHook(SEED_PURCHASE_ORDERS);
-const useRecipes   = makeHook(SEED_RECIPES);
-const useWaste     = makeHook(SEED_WASTE);
-const useCash      = makeHook(SEED_CASH_SESSIONS);
-const useShifts    = makeHook(SEED_SHIFTS);
-const useSchedules = () => {
-  const [data,setData] = useState([...SEED_SCHEDULES]);
-  const upsert = s => setData(d=>d.find(x=>x.staffId===s.staffId)?d.map(x=>x.staffId===s.staffId?{...x,...s}:x):[...d,s]);
-  return { data, loading:false, error:null, upsert };
-};
-const LoadingScreen = () => (
-  <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"60vh",flexDirection:"column",gap:16}}>
-    <div style={{width:36,height:36,border:"3px solid #e5e9f0",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-    <div style={{color:"#6b7280",fontSize:14}}>Loading…</div>
-  </div>
-);
-const DbError = ({message}) => (
-  <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"14px 18px",marginBottom:20,display:"flex",gap:10}}>
-    <span>⚠️</span><div style={{color:"#9ca3af",fontSize:12}}>Running with local data. {message}</div>
-  </div>
-);
+import {
+  useVendors, useInvoices, useProducts, useCustomers,
+  useExpenses, usePOs, useRecipes, useWaste, useCash,
+  useShifts, useSchedules, LoadingScreen, DbError,
+} from "./hooks";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH
