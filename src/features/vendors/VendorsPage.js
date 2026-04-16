@@ -36,10 +36,10 @@ export function VendorsPage() {
         unitPrice: Number(item.unitPrice) || 0,
         qty: Number(item.qty) || 0,
         existing: existing || null,
-        // default: add to inventory / update price
+        // default: add to inventory / update price and stock
         include: true,
-        addToStock: !existing, // only add stock for new items by default
-        stockQty: !existing ? Number(item.qty) || 0 : 0,
+        addToStock: true, // add stock for all items by default (new invoice = received goods)
+        stockQty: Number(item.qty) || 0,
         category: existing?.category || "Other",
         sellPrice: existing?.price || Number(item.unitPrice) * 1.4 || 0,
         minStock: existing?.minStock || 5,
