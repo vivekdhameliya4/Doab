@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useAuth } from "./features/auth/AuthContext";
 import { Sidebar } from "./features/layout/Sidebar";
 import { HomePage } from "./features/layout/HomePage";
-import { POSPage } from "./features/pos/POSPage";
 import { InventoryPage } from "./features/inventory/InventoryPage";
 import { ReportsPage } from "./features/reports/ReportsPage";
 import { CustomersPage } from "./features/customers/CustomersPage";
@@ -20,8 +19,6 @@ import { PnLPage } from "./features/pnl/PnLPage";
 import { BestSellersPage } from "./features/bestsellers/BestSellersPage";
 import { ReorderPage } from "./features/reorder/ReorderPage";
 import { ReceiptScanPage } from "./features/receiptscan/ReceiptScanPage";
-import { ForecastPage } from "./features/forecast/ForecastPage";
-import { SmartPricingPage } from "./features/pricing/SmartPricingPage";
 import { SchedulePage } from "./features/schedule/SchedulePage";
 import { PayrollPage } from "./features/payroll/PayrollPage";
 import { ChecklistPage } from "./features/checklist/ChecklistPage";
@@ -36,7 +33,6 @@ export function Dashboard() {
 
   const render=()=>{
     if(tab==="home")        return <HomePage setActive={setTab} user={user}/>;
-    if(tab==="pos")         return <POSPage/>;
     if(tab==="inventory")   return <InventoryPage/>;
     if(tab==="reports")     return <ReportsPage/>;
     if(tab==="pnl")         return <PnLPage/>;
@@ -45,13 +41,11 @@ export function Dashboard() {
     if(tab==="purchase")    return <PurchasePage/>;
     if(tab==="reorder")     return <ReorderPage/>;
     if(tab==="recipes")     return <RecipesPage/>;
-    if(tab==="pricing")     return <SmartPricingPage/>;
     if(tab==="customers")   return <CustomersPage/>;
     if(tab==="expenses")    return <ExpensesPage/>;
     if(tab==="receiptscan") return <ReceiptScanPage/>;
     if(tab==="cash")        return <CashPage/>;
     if(tab==="waste")       return <WastePage/>;
-    if(tab==="forecast")    return <ForecastPage/>;
     if(tab==="schedule")    return <SchedulePage/>;
     if(tab==="payroll")     return <PayrollPage/>;
     if(tab==="checklist")   return <ChecklistPage/>;
@@ -65,9 +59,9 @@ export function Dashboard() {
   // Mobile bottom nav — most-used 5 tabs
   const BOTTOM_NAV = [
     { key:"home",      icon:"🏠", label:"Home"     },
-    { key:"pos",       icon:"🛒", label:"POS"      },
     { key:"inventory", icon:"📦", label:"Stock"    },
     { key:"vendors",   icon:"🏭", label:"Vendors"  },
+    { key:"reports",   icon:"📊", label:"Reports"  },
     { key:"alerts",    icon:"🔔", label:"Alerts"   },
   ];
 
