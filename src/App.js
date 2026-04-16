@@ -64,11 +64,6 @@ export default function App() {
           .hide-mobile { display:none !important; }
         }
 
-        /* ── POS layout stacks on mobile ── */
-        @media (max-width:700px) {
-          .pos-layout { grid-template-columns:1fr !important; }
-          .pos-cart { position:fixed !important; bottom:70px !important; left:0 !important; right:0 !important; max-height:45vh !important; border-radius:18px 18px 0 0 !important; z-index:20 !important; }
-        }
 
         /* ── Scrollbar styling ── */
         ::-webkit-scrollbar { width:5px; height:5px; }

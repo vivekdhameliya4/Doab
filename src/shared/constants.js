@@ -26,7 +26,6 @@ export const CATEGORY_SALES = [
 export const ROLE_COLORS = { Admin:{bg:"#fff0e6",text:"#c45c00",dot:"#e87c2b"}, Manager:{bg:"#e8f0ff",text:"#2952c4",dot:"#4a7cf7"}, Cashier:{bg:"#e8f7ee",text:"#1a7a42",dot:"#2ecc71"} };
 export const EXPENSE_CATS = ["Utilities","Rent","Equipment","Maintenance","Software","Marketing","Other"];
 export const FEATURES = [
-  { key:"pos",         label:"Point of Sale",         icon:"🛒", color:"#2ecc71", desc:"Process transactions & sales",     roles:["Admin","Manager","Cashier"] },
   { key:"inventory",   label:"Inventory",             icon:"📦", color:"#4a7cf7", desc:"Stock levels & product catalog",   roles:["Admin","Manager"] },
   { key:"reports",     label:"Sales Reports",         icon:"📊", color:"#e87c2b", desc:"Analytics & performance",          roles:["Admin","Manager"] },
   { key:"pnl",         label:"Profit & Loss",         icon:"💹", color:"#059669", desc:"Revenue, costs & margins",         roles:["Admin","Manager"] },
@@ -35,13 +34,11 @@ export const FEATURES = [
   { key:"purchase",    label:"Purchase Orders",       icon:"📋", color:"#6366f1", desc:"Create & track POs",               roles:["Admin","Manager"] },
   { key:"reorder",     label:"Reorder Alerts",        icon:"🔄", color:"#f97316", desc:"Low stock reorder suggestions",    roles:["Admin","Manager"] },
   { key:"recipes",     label:"Recipes & Costing",     icon:"🧾", color:"#8b5cf6", desc:"Menu items & profit margins",      roles:["Admin","Manager"] },
-  { key:"pricing",     label:"Smart Pricing",         icon:"🤖", color:"#06b6d4", desc:"AI price suggestions",             roles:["Admin","Manager"] },
   { key:"customers",   label:"Customers & Loyalty",   icon:"🧑‍🤝‍🧑", color:"#f59e0b",desc:"CRM & loyalty programs",           roles:["Admin","Manager"] },
   { key:"expenses",    label:"Expenses",              icon:"💳", color:"#ec4899", desc:"Track costs & outgoings",          roles:["Admin","Manager"] },
   { key:"receiptscan", label:"Receipt Scanner",       icon:"📷", color:"#14b8a6", desc:"AI scan receipts & bills",         roles:["Admin","Manager"] },
   { key:"cash",        label:"Cash Register",         icon:"🏧", color:"#84cc16", desc:"Daily cash reconciliation",        roles:["Admin","Manager","Cashier"] },
   { key:"waste",       label:"Waste & Spoilage",      icon:"🗑️", color:"#ef4444", desc:"Log waste & track losses",         roles:["Admin","Manager"] },
-  { key:"forecast",    label:"AI Forecasting",        icon:"🔮", color:"#a855f7", desc:"Predict stock & sales trends",     roles:["Admin","Manager"] },
   { key:"schedule",    label:"Staff Scheduling",      icon:"📅", color:"#0ea5e9", desc:"Weekly shift planner",             roles:["Admin","Manager"] },
   { key:"payroll",     label:"Payroll",               icon:"💰", color:"#22c55e", desc:"Calculate staff pay",              roles:["Admin","Manager"] },
   { key:"checklist",   label:"Daily Checklist",       icon:"✅", color:"#64748b", desc:"Opening & closing tasks",          roles:["Admin","Manager","Cashier"] },
@@ -50,10 +47,9 @@ export const FEATURES = [
 ];
 export const NAV_GROUPS = [
   { label:"MAIN",       items:[{key:"home",label:"Home",icon:"🏠"}] },
-  { label:"OPERATIONS", items:[{key:"pos",label:"Point of Sale",icon:"🛒"},{key:"inventory",label:"Inventory",icon:"📦"},{key:"purchase",label:"Purchase Orders",icon:"📋"},{key:"vendors",label:"Vendors & Invoices",icon:"🏭"},{key:"customers",label:"Customers",icon:"🧑‍🤝‍🧑"}] },
+  { label:"OPERATIONS", items:[{key:"inventory",label:"Inventory",icon:"📦"},{key:"purchase",label:"Purchase Orders",icon:"📋"},{key:"vendors",label:"Vendors & Invoices",icon:"🏭"},{key:"customers",label:"Customers",icon:"🧑‍🤝‍🧑"}] },
   { label:"MENU",       items:[{key:"recipes",label:"Recipes & Costing",icon:"🧾"},{key:"waste",label:"Waste & Spoilage",icon:"🗑️"},{key:"reorder",label:"Reorder Alerts",icon:"🔄"}] },
   { label:"FINANCE",    items:[{key:"reports",label:"Sales Reports",icon:"📊"},{key:"pnl",label:"Profit & Loss",icon:"💹"},{key:"bestsellers",label:"Best Sellers",icon:"🏆"},{key:"cash",label:"Cash Register",icon:"🏧"},{key:"expenses",label:"Expenses",icon:"💳"},{key:"receiptscan",label:"Receipt Scanner",icon:"📷"}] },
-  { label:"AI",         items:[{key:"forecast",label:"AI Forecasting",icon:"🔮"},{key:"pricing",label:"Smart Pricing",icon:"🤖"}] },
   { label:"TEAM",       items:[{key:"schedule",label:"Staff Schedule",icon:"📅"},{key:"attendance",label:"Attendance",icon:"🗓️"},{key:"payroll",label:"Payroll",icon:"💰"},{key:"checklist",label:"Daily Checklist",icon:"✅"},{key:"users",label:"User Management",icon:"👥"}] },
   { label:"SYSTEM",     items:[{key:"alerts",label:"Notifications",icon:"🔔"},{key:"activity",label:"Activity Log",icon:"📋"}] },
 ];

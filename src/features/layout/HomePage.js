@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FEATURES } from "../../shared/constants";
-import { StatCard, PBtn } from "../../shared/ui";
+import { StatCard } from "../../shared/ui";
 
 export function HomePage({ setActive, user }) {
   const h=new Date().getHours();
@@ -12,7 +12,6 @@ export function HomePage({ setActive, user }) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative"}}>
           <div><div style={{color:"rgba(255,255,255,0.7)",fontSize:12,marginBottom:3}}>{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div><div style={{color:"#ffffff",fontSize:24,fontWeight:800,marginBottom:4}}>{gr}, {user?.name?.split(" ")[0]} 👋</div><div style={{color:"rgba(255,255,255,0.7)",fontSize:13}}>Here's what's happening at your store today.</div></div>
           <div style={{display:"flex",gap:8}}>
-            <PBtn onClick={()=>setActive("pos")}>🛒 New Sale</PBtn>
             <button onClick={()=>setActive("vendors")} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #bfdbfe",background:"rgba(255,255,255,0.04)",color:"#374151",fontSize:13,fontWeight:600,cursor:"pointer"}}>🏭 Add Invoice</button>
           </div>
         </div>
