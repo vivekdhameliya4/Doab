@@ -1,22 +1,23 @@
 import { useState } from "react";
-import { SEED_PRODUCTS } from "../../shared/constants";
 import { downloadCSV } from "../../shared/utils";
 import { S, PageHeader, StatCard, FBtn, PBtn } from "../../shared/ui";
+import { useProducts, LoadingScreen, DbError } from "../../hooks";
 import { ProductModal } from "./ProductModal";
 
 export function InventoryPage() {
-  const [products, setProducts] = useState(SEED_PRODUCTS);
+  const { data: products, loading, error, save: saveDb } = useProducts();
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("All");
   const [modal, setModal] = useState(null); // null | {mode:"add"|"edit", data?}
   const cats = ["All",...new Set(products.map(p=>p.category))];
   const filtered = products.filter(p=>(catFilter==="All"||p.category===catFilter)&&p.name.toLowerCase().includes(search.toLowerCase()));
   const lowStock = products.filter(p=>p.stock<=p.minStock);
-  const saveProduct = p => {
-    if(p.id) setProducts(ps=>ps.map(x=>x.id===p.id?p:x));
-    else setProducts(ps=>[...ps,{...p,id:Date.now()}]);
+  const saveProduct = async p => {
+    await saveDb(p);
     setModal(null);
   };
+  if(loading) return <LoadingScreen/>;
+  if(error) return <DbError message={error}/>;
   return (
     <div>
       <PageHeader title="Inventory" subtitle="Manage products, stock levels and pricing." action={
